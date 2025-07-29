@@ -3,6 +3,8 @@ from controllers import mail_bot_controller
 
 app = FastAPI()
 app.include_router(mail_bot_controller.router)
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 if __name__ == "__main__":
     import uvicorn
