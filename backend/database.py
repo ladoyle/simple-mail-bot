@@ -16,6 +16,11 @@ class EmailStatistic(Base):
 class EmailRule(Base):
     __tablename__ = "email_rules"
     id = Column(Integer, primary_key=True, index=True)
-    rule_name = Column(String, unique=True, index=True)
+    name = Column(String, unique=True)
     condition = Column(String)
     action = Column(String, nullable=False)
+
+class EmailLabel(Base):
+    __tablename__ = "email_labels"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
