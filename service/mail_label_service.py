@@ -1,22 +1,20 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
+
 from models.mail_bot_schemas import LabelRequest
 from backend.database import EmailLabel
+from backend.gmail_client import GmailClient, get_gmail_client
 
 def get_label_service(
     db: Session = Depends(get_db),
     gmail_client: GmailClient = Depends(get_gmail_client)
 ):
-    return MailLabelService(db_session=db, gmail_client=gmail_client)
-
+    global mail_label_service
+    if mail_label_service is None:
+        mail_label_service = MailLabelService(db_session=db, gmail_client=gmail_client)
+    return mail_label_service
 
 class MailLabelService:
-    _instance = None
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(MailLabelService, cls).__new__(cls)
-        return cls._instance
-    
     def __init__(self, db_session: Session, gmail_client: GmailCLient):
         self.db = db_session
         self.gmail_client = gmail_client
@@ -76,7 +74,7 @@ class MailLabelService:
         return label.id
 
     def delete_label(self, label_id: int):
-        label = self.db.query(EmailLabel).filter(EmailLabel.id == label_id).first()
+        label = self.db.query(EmailLabel).filter(EmailLabel.id == label_id)
         if not label:
             return False
 
