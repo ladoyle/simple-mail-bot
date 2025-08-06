@@ -1,8 +1,22 @@
 from fastapi import FastAPI
-from controllers import mail_bot_controller
+
+import controllers as ctrls
 
 app = FastAPI()
-app.include_router(mail_bot_controller.router)
+app.include_router(ctrls.mail_bot_label_controller.label_router)
+app.include_router(ctrls.mail_bot_rule_controller.rule_router)
+app.include_router(ctrls.mail_bot_stats_controller.stats_router)
+
+# Global instance pool
+
+## Service Instances
+mail_label_service = None
+
+## Gmail Client Instance
+gmail_client = None
+
+## Database Instance
+local_session = None
 
 if __name__ == "__main__":
     import uvicorn
