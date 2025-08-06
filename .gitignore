@@ -5,3 +5,6 @@
 .env
 venv
 env
+
+token.*
+cred.*

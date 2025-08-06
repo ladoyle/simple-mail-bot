@@ -15,7 +15,7 @@ def get_label_service(
     return mail_label_service
 
 class MailLabelService:
-    def __init__(self, db_session: Session, gmail_client: GmailCLient):
+    def __init__(self, db_session: Session, gmail_client: GmailClient):
         self.db = db_session
         self.gmail_client = gmail_client
 
