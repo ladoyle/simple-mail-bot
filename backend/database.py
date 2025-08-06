@@ -3,8 +3,16 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = "sqlite:///./mail_bot.db"
 engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+def get_db():
+    global local_session
+    if local_session is None:
+        local_session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    return local_session
 
 class EmailStatistic(Base):
     __tablename__ = "email_statistics"

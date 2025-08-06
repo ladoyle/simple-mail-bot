@@ -2,7 +2,7 @@ from fastapi import Depends
 from sqlalchemy.orm import Session
 
 from models.mail_bot_schemas import LabelRequest
-from backend.database import EmailLabel
+from backend.database import EmailLabel, get_db
 from backend.gmail_client import GmailClient, get_gmail_client
 
 def get_label_service(
