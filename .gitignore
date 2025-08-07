@@ -6,5 +6,5 @@
 venv
 env
 
-token.*
-cred.*
+token*
+cred*
