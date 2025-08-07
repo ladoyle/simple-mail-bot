@@ -1,0 +1,10 @@
+.idea
+.vscode
+
+.venv
+.env
+venv
+env
+
+token*
+cred*
