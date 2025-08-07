@@ -52,7 +52,9 @@ class GmailClient:
         else:
             self._oauth_login()
 
-        return build('gmail', 'v1', credentials=self.creds)
+        return build('gmail', 'v1',
+                     credentials=self.creds,
+                     discoveryServiceUrl="https://gmail.googleapis.com/$discovery/rest?version=v1")
 
     ## Labels
     def list_labels(self):

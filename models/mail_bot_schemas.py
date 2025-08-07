@@ -6,6 +6,14 @@ class LabelRequest(BaseModel):
     label: str
 
 
+class LabelResponse(BaseModel):
+    id: int
+    name: str
+
+    class Config:
+        from_attributes = True
+
+
 class RuleRequest(BaseModel):
     rule_name: str
     condition: str

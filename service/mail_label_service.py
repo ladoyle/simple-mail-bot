@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from backend import database
 from models.mail_bot_schemas import LabelRequest
-from backend.database import EmailLabel, get_db
+from backend.database import EmailLabel
 from backend.gmail_client import GmailClient, get_gmail_client
 
 mail_label_service = None
@@ -57,8 +57,7 @@ class MailLabelService:
         self._db_delete(bad_labels)
 
         # Return synced labels from db
-        local_labels = self.db.query(EmailLabel).all()
-        return local_labels
+        return self.db.query(EmailLabel).all()
 
     def create_label(self, req: LabelRequest):
         try:
