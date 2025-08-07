@@ -1,27 +1,28 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from backend import database
 from models.mail_bot_schemas import LabelRequest
 from backend.database import EmailLabel, get_db
 from backend.gmail_client import GmailClient, get_gmail_client
 
+mail_label_service = None
+
+
 def get_label_service(
-    db: Session = Depends(get_db),
-    gmail_client: GmailClient = Depends(get_gmail_client)
+        db: Session = Depends(database.get_db),
+        gmail_client: GmailClient = Depends(get_gmail_client)
 ):
     global mail_label_service
     if mail_label_service is None:
         mail_label_service = MailLabelService(db_session=db, gmail_client=gmail_client)
     return mail_label_service
 
+
 class MailLabelService:
     def __init__(self, db_session: Session, gmail_client: GmailClient):
         self.db = db_session
         self.gmail_client = gmail_client
-
-    def __del__(self):
-        if hasattr(self, "db"):
-            self.db.close()
 
     def _db_add(self, labels: list[str]):
         """Helper method to add labels to the local database."""
@@ -62,7 +63,7 @@ class MailLabelService:
     def create_label(self, req: LabelRequest):
         try:
             # Create label in Gmail (golden source)
-            gmail_label = self.gmail_client.create_label(req.name, req.email_id)
+            gmail_label = self.gmail_client.create_label(req.name)
         except Exception as e:
             raise RuntimeError(f"Failed to create label in Gmail: {e}")
 

@@ -5,6 +5,8 @@ from googleapiclient.discovery import build
 import keyring
 import json
 
+gmail_client = None
+
 
 def get_gmail_client():
     global gmail_client
@@ -12,11 +14,12 @@ def get_gmail_client():
         gmail_client = GmailClient()
     return gmail_client
 
+
 class GmailClient:
     # If modifying these scopes, delete the file token.pickle.
     SCOPES = [
-        'https://www.googleapis.com/auth/gmail.labels',      # For creating/modifying labels
-        'https://www.googleapis.com/auth/gmail.modify',      # For modifying emails (applying labels)
+        'https://www.googleapis.com/auth/gmail.labels',  # For creating/modifying labels
+        'https://www.googleapis.com/auth/gmail.modify',  # For modifying emails (applying labels)
         'https://www.googleapis.com/auth/gmail.settings.basic'  # Required for filter management
     ]
 
@@ -30,7 +33,7 @@ class GmailClient:
         if not self.creds:
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', self.SCOPES)
-            self.creds = flow.run_local_server(port=0)
+            self.creds = flow.run_local_server(port=8000)
         elif self.creds.expired and self.creds.refresh_token:
             self.creds.refresh(Request())
         else:
