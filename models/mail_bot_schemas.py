@@ -8,6 +8,7 @@ class LabelRequest(BaseModel):
 
 class LabelResponse(BaseModel):
     id: int
+    gmail_id: str
     name: str
 
     class Config:
@@ -18,3 +19,14 @@ class RuleRequest(BaseModel):
     rule_name: str
     condition: str
     action: str
+
+
+class RuleResponse(BaseModel):
+    id: int
+    gmail_id: str
+    name: str
+    condition: str
+    action: str
+
+    class Config:
+        from_attributes = True

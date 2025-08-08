@@ -67,14 +67,14 @@ class MailLabelService:
             raise RuntimeError(f"Failed to create label in Gmail: {e}")
 
         # Store in local DB
-        label = EmailLabel(name=gmail_label['name'])
+        label = EmailLabel(name=gmail_label['name'], gmail_id=gmail_label['id'])
         self.db.add(label)
         self.db.commit()
         self.db.refresh(label)
         return label.id
 
     def delete_label(self, label_id: int):
-        label = self.db.query(EmailLabel).filter(EmailLabel.id == label_id)
+        label = self.db.query(EmailLabel).filter(EmailLabel.id == label_id).first()
         if not label:
             return False
 
