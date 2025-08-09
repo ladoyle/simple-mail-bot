@@ -17,7 +17,7 @@ class LabelResponse(BaseModel):
 
 class RuleRequest(BaseModel):
     rule_name: str
-    condition: str
+    criteria: str
     action: str
 
 
@@ -25,7 +25,7 @@ class RuleResponse(BaseModel):
     id: int
     gmail_id: str
     name: str
-    condition: str
+    criteria: str
     action: str
 
     class Config:

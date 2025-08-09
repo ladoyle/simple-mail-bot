@@ -15,7 +15,7 @@ def list_rules(mail_rule_service: MailRuleService = Depends(get_rule_service)):
 @rule_router.post("/", response_model=dict)
 def create_rule(req: RuleRequest, mail_rule_service: MailRuleService = Depends(get_rule_service)):
     rule_id = mail_rule_service.create_rule(req)
-    return {"message": "Rule created", "rules": rule_id}
+    return {"message": "Rule created", "rule id": rule_id}
 
 
 @rule_router.delete("/{rule_id}", response_model=dict)
@@ -23,4 +23,4 @@ def delete_rule(rule_id: int, mail_rule_service: MailRuleService = Depends(get_r
     deleted = mail_rule_service.delete_rule(rule_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return {"message": "Rule deleted", "rules": rule_id}
+    return {"message": "Rule deleted", "rule id": rule_id}

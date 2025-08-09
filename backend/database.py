@@ -32,7 +32,7 @@ class EmailRule(Base):
     id = Column(Integer, primary_key=True, index=True)
     gmail_id = Column(String, nullable=False)
     name = Column(String, unique=True)
-    condition = Column(String)
+    criteria = Column(String)
     action = Column(String, nullable=False)
 
 
