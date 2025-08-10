@@ -99,21 +99,13 @@ class GmailClient:
             raise Exception(f"Failed to delete label: {str(e)}")
 
     ## Filters
-    def create_filter(self, criteria, actions):
+    def create_filter(self, criteria: dict, actions: dict):
         """
         Create a Gmail filter
 
         Args:
             criteria (dict): Filter criteria like:
                 {
-                criteria.from='sender@example.com' 	All emails from sender@example.com
-criteria.size=10485760
-criteria.sizeComparison='larger' 	All emails larger than 10MB
-criteria.hasAttachment=true 	All emails with an attachment
-criteria.subject='[People with Pets]' 	All emails with the string [People with Pets] in the subject
-criteria.query='"my important project"' 	All emails containing the string my important project
-criteria.negatedQuery='"secret knock"' 	All emails that do not contain the string secret knock
-
                     'from': 'sender@example.com',
                     'to': 'recipient@example.com',
                     'subject': 'subject text',
