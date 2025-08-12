@@ -1,4 +1,7 @@
+from typing import Optional
+
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import database
@@ -28,7 +31,7 @@ class MailLabelService:
         """Helper method to add labels to the local database."""
         self.db.add_all(
             [EmailLabel(gmail_id=lbl['id'], name=lbl['name']) for lbl in labels]
-            )
+        )
         self.db.commit()
 
     def _db_delete(self, labels: list[EmailLabel]):
@@ -37,7 +40,7 @@ class MailLabelService:
             self.db.delete(label)
         self.db.commit()
 
-    def list_labels(self):
+    def list_labels(self) -> list[EmailLabel]:
         try:
             # Get from Gmail (golden source)
             gmail_labels = self.gmail_client.list_labels()
@@ -46,19 +49,17 @@ class MailLabelService:
             raise RuntimeError(f"Failed to fetch labels from Gmail: {e}")
 
         # Fetch all local labels
-        local_labels = self.db.query(EmailLabel).all()
+        local_labels = self.db.execute(select(EmailLabel)).scalars().all()
         local_label_map = {label.gmail_id: label for label in local_labels}
 
         # Add new labels from Gmail to DB
-        new_labels = [lbl for gid, lbl in gmail_label_map if gid not in local_label_map]
-        self._upsert_db(new_labels)
+        self._upsert_db([lbl for gid, lbl in gmail_label_map.items() if gid not in local_label_map])
 
         # Delete labels from DB that are not in Gmail
-        bad_labels = [lbl for gid, lbl in local_label_map if gid not in gmail_label_map]
-        self._db_delete(bad_labels)
+        self._db_delete([lbl for lbl in local_labels if lbl.gmail_id not in gmail_label_map])
 
         # Return synced labels from db
-        return self.db.query(EmailLabel).order_by(EmailLabel.name.asc()).all()
+        return [lbl for lbl in self.db.execute(select(EmailLabel).order_by(EmailLabel.name)).scalars().all()]
 
     def create_label(self, req: LabelRequest):
         try:
@@ -75,7 +76,7 @@ class MailLabelService:
         return label.id
 
     def delete_label(self, label_id: int):
-        label = self.db.query(EmailLabel).filter(EmailLabel.id == label_id).first()
+        label: Optional[EmailLabel, None] = self.db.get(EmailLabel, label_id)
         if not label:
             return False
 

@@ -1,6 +1,7 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import database
@@ -38,7 +39,7 @@ class MailRuleService:
     # Internal utilities
     # ---------------------------
 
-    def _upsert_db_rule(self, rules: List[dict]) -> None:
+    def _upsert_db_rule(self, rules: list[dict]) -> None:
         """Helper method to upsert multiple rules into the local database."""
         self.db.add_all([EmailRule(
             gmail_id=r["id"],
@@ -48,7 +49,7 @@ class MailRuleService:
         ) for r in rules])
         self.db.commit()
 
-    def _db_delete(self, rules: List[EmailRule]) -> None:
+    def _db_delete(self, rules: list[EmailRule]) -> None:
         """Helper method to delete rules from the local database."""
         for rule in rules:
             self.db.delete(rule)
@@ -65,44 +66,43 @@ class MailRuleService:
 
         try:
             # Create in Gmail first (source of truth)
-            gmail_rule = self.gmail_client.create_rule(
+            gmail_rule = self.gmail_client.create_filter(
                 criteria=json.loads(req.criteria),
-                action=json.loads(req.action)
+                actions=json.loads(req.action)
             )
         except RuntimeError as e:
             raise RuntimeError(f"Failed to create rule in Gmail: {e}")
 
         # Upsert into DB by rule_name
-        rule = self.db.query(EmailRule).filter(
-            EmailRule.gmail_id == gmail_rule['id']).first()
-        if rule:
-            rule.name = req.rule_name
-            rule.criteria = req.criteria
-            rule.action = req.action
-            
-        rule = EmailRule(
+        db_rule = self.db.get(EmailRule, gmail_rule['id'])
+        if db_rule:
+            db_rule.name = req.rule_name
+            db_rule.criteria = req.criteria
+            db_rule.action = req.action
+
+        db_rule = EmailRule(
             gmail_id=gmail_rule['id'],
             rule_name=req.rule_name,
             criteria=req.criteria,
             action=req.action
             )
-        self.db.add(rule)
+        self.db.add(db_rule)
         self.db.commit()
-        self.db.refresh(rule)
-        return rule
+        self.db.refresh(db_rule)
+        return db_rule.id
 
     def delete_rule(self, rule_id: int) -> bool:
         """
         Delete a rule: remove from Gmail first, then from DB. Returns True if deleted, False if not found.
         """
-        db_rule = self.db.query(EmailRule).filter(EmailRule.id == rule_id).first()
+        db_rule: Optional[EmailRule, None] = self.db.get(EmailRule, rule_id)
         if not db_rule:
             return False
 
         try:
             # Delete from Gmail first (source of truth)
-            self.gmail_client.delete_rule(
-                rule_id=db_rule.gmail_id
+            self.gmail_client.delete_filter(
+                filter_id=db_rule.gmail_id
             )
         except RuntimeError as e:
             raise RuntimeError(f"Failed to delete rule from Gmail: {e}")
@@ -117,23 +117,23 @@ class MailRuleService:
         List rules by syncing from Gmail first (Gmail is the gold standard)
         and returning the DB rows.
         """
-        gmail_rules = self.gmail_client.list_rules()
+        gmail_rules = self.gmail_client.list_filters()
         # map by rule_name (assumed unique)
         gmail_map = {r["id"]: r for r in gmail_rules}
 
         # Fetch local rules
-        local_rules = self.db.query(EmailRule).all()
+        local_rules = self.db.execute(select(EmailRule)).scalars().all()
         local_map = {r.gmail_id: r for r in local_rules}
 
         # Upsert all Gmail rules
         self._upsert_db_rule(
-            [r for r in gmail_rules if r["id"] not in local_map]
+            [r for i, r in gmail_rules.items() if i not in local_map]
             )
 
         # Remove DB rules not present in Gmail
         self._db_delete(
             [r for r in local_rules if r.gmail_id not in gmail_map]
         )
-
-        return self.db.query(EmailRule).order_by(EmailRule.rule_name.asc()).all()
+        synced_rules = self.db.execute(select(EmailRule).order_by(EmailRule.name)).scalars().all()
+        return [r for r in synced_rules]
 
