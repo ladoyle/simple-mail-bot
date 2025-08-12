@@ -30,14 +30,16 @@ class EmailStatistic(Base):
 class EmailRule(Base):
     __tablename__ = "email_rules"
     id = Column(Integer, primary_key=True, index=True)
+    gmail_id = Column(String, nullable=False)
     name = Column(String, unique=True)
-    condition = Column(String)
+    criteria = Column(String)
     action = Column(String, nullable=False)
 
 
 class EmailLabel(Base):
     __tablename__ = "email_labels"
     id = Column(Integer, primary_key=True, index=True)
+    gmail_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
 
 
