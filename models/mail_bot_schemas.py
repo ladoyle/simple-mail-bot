@@ -18,7 +18,9 @@ class LabelResponse(BaseModel):
 class RuleRequest(BaseModel):
     rule_name: str
     criteria: str
-    action: str
+    addLabelIds: list[str]
+    removeLabelIds: list[str]
+    forward: str
 
 
 class RuleResponse(BaseModel):
@@ -26,7 +28,9 @@ class RuleResponse(BaseModel):
     gmail_id: str
     name: str
     criteria: str
-    action: str
+    addLabelIds: list[str]
+    removeLabelIds: list[str]
+    forward: str
 
     class Config:
         from_attributes = True
