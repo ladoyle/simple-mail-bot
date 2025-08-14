@@ -1,3 +1,4 @@
+import logging as log
 from typing import List, Optional
 
 from fastapi import Depends
@@ -41,16 +42,20 @@ class MailRuleService:
 
     def _upsert_db_rule(self, rules: list[dict]) -> None:
         """Helper method to upsert multiple rules into the local database."""
+        log.warning(f"Upserting {len(rules)} rules into DB during sync")
         self.db.add_all([EmailRule(
             gmail_id=r["id"],
             rule_name=r.get("rule_name", "Unnamed Rule"),
-            criteria=json.dumps(r["criteria"]),
-            action=json.dumps(r["action"])
+            criteria=r.get("criteria", ''),
+            addLabelIds=r["action"].get("addLabelIds", []),
+            removeLabelIds=r["action"].get("removeLabelIds", []),
+            forward=r["action"].get("forward", "")
         ) for r in rules])
         self.db.commit()
 
     def _db_delete(self, rules: list[EmailRule]) -> None:
         """Helper method to delete rules from the local database."""
+        log.warning(f"Deleting {len(rules)} rules from DB during sync")
         for rule in rules:
             self.db.delete(rule)
         self.db.commit()
@@ -68,7 +73,11 @@ class MailRuleService:
             # Create in Gmail first (source of truth)
             gmail_rule = self.gmail_client.create_filter(
                 criteria=json.loads(req.criteria),
-                actions=json.loads(req.action)
+                actions={
+                    'addLabelIds': req.add_label_ids,
+                    'removeLabelIds': req.remove_label_ids,
+                    'forward': req.forward
+                }
             )
         except RuntimeError as e:
             raise RuntimeError(f"Failed to create rule in Gmail: {e}")
@@ -117,13 +126,18 @@ class MailRuleService:
         List rules by syncing from Gmail first (Gmail is the gold standard)
         and returning the DB rows.
         """
-        gmail_rules = self.gmail_client.list_filters()
-        # map by rule_name (assumed unique)
-        gmail_map = {r["id"]: r for r in gmail_rules}
+        try:
+            gmail_rules = self.gmail_client.list_filters()
+            # map by rule_name (assumed unique)
+            gmail_map = {r["id"]: r for r in gmail_rules}
+            log.info(f"Fetched {len(gmail_map)} rules from Gmail")
+        except Exception as e:
+            raise RuntimeError(f"Failed to list rules from Gmail: {e}")
 
         # Fetch local rules
         local_rules = self.db.execute(select(EmailRule)).scalars().all()
         local_map = {r.gmail_id: r for r in local_rules}
+        log.info(f"Fetched {len(local_map)} rules from DB")
 
         # Upsert all Gmail rules
         self._upsert_db_rule(
@@ -134,6 +148,5 @@ class MailRuleService:
         self._db_delete(
             [r for r in local_rules if r.gmail_id not in gmail_map]
         )
-        synced_rules = self.db.execute(select(EmailRule).order_by(EmailRule.name)).scalars().all()
-        return [r for r in synced_rules]
+        return list(self.db.execute(select(EmailRule).order_by(EmailRule.name)).scalars().all())
 

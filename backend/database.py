@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, Integer, String, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -32,8 +32,10 @@ class EmailRule(Base):
     id = Column(Integer, primary_key=True, index=True)
     gmail_id = Column(String, nullable=False)
     name = Column(String, unique=True)
-    criteria = Column(String)
-    action = Column(String, nullable=False)
+    criteria = Column(String, default="")
+    addLabelIds = Column(JSON, nullable=False, default=list)
+    removeLabelIds = Column(JSON, nullable=False, default=list)
+    forward = Column(String, default="")
 
 
 class EmailLabel(Base):
