@@ -41,6 +41,7 @@ class HistoryEngine:
     """
 
     def __init__(self, db_session: Session, gmail_client: GmailClient):
+        log.debug("Initializing mail history engine")
         self.db: Session = db_session
         self.gmail_client = gmail_client
         self._task: Optional[asyncio.Task] = None
@@ -55,6 +56,7 @@ class HistoryEngine:
         """
         log.info("Starting mail history engine")
         if self._task and not self._task.done():
+            log.warning("Mail history engine already running")
             return
         self._task = asyncio.create_task(self._scheduler_loop(), name="mail-history-engine-4am")
 
@@ -77,6 +79,7 @@ class HistoryEngine:
         try:
             while True:
                 sleep_seconds = self._seconds_until_next_4am_utc()
+                log.info(f"Sleeping until next 4:00 AM UTC: {sleep_seconds} seconds")
                 await asyncio.sleep(sleep_seconds)
                 await self.run_once()
         except asyncio.CancelledError:

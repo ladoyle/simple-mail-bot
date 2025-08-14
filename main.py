@@ -9,6 +9,8 @@ from service.mail_history_engine_service import get_history_engine_service
 from backend import database
 from backend.gmail_client import get_gmail_client
 
+import logging
+
 
 @asynccontextmanager
 async def lifespan(bot_app: FastAPI):
@@ -26,6 +28,13 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(label_ctrl.label_router)
 app.include_router(rule_ctrl.rule_router)
 app.include_router(stats_ctrl.stats_router)
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
 
 if __name__ == "__main__":
     import uvicorn
