@@ -110,7 +110,10 @@ class MailHistoryEngineService:
         label_to_rule_ids, rule_names = self._build_label_to_rule_ids(list(rules))
 
         # 3) Get history entries from the client (it maintains startHistoryId internally)
-        histories: List[dict] = self.gmail_client.list_history(history_types=["labelAdded", "labelRemoved"])
+        try:
+            histories: List[dict] = self.gmail_client.list_history(history_types=["labelAdded", "labelRemoved"])
+        except Exception as e:
+            raise RuntimeError(f"Failed to fetch Gmail history: {e}")
 
         # 4) For each rule, track unique message ids processed in this run
         rule_to_message_ids: Dict[int, Set[str]] = {r.id: set() for r in rules}

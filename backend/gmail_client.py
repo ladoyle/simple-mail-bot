@@ -31,6 +31,8 @@ class GmailClient:
 
     def __init__(self):
         self.service = self._get_gmail_service()
+        # In-memory history cursor (None means not initialized yet)
+        self._last_history_id = ""
 
     def _oauth_login(self):
         # If there are no (valid) credentials available, let the user log in.
@@ -169,6 +171,10 @@ class GmailClient:
         except Exception as e:
             raise Exception(f"Failed to delete filter: {str(e)}")
 
+    # ------------------
+    ## Message Stats
+    # ------------------
+
     def get_unread_count(self) -> int:
         """
         Return the number of unread messages using the UNREAD system label.
@@ -193,3 +199,51 @@ class GmailClient:
             return int(profile.get('messagesTotal', 0))
         except Exception as e:
             raise Exception(f"Failed to retrieve total message count from Gmail: {e}")
+
+    # ---------------
+    ## Gmail History
+    # ---------------
+
+    def list_history(self, history_types: list[str] = None) -> list[dict]:
+        """
+        Returns up to 500 history records since the last stored history id.
+        - Keeps the latest history id in-memory (self._last_history_id).
+        - If no history id is present, initializes it from users().getProfile().historyId
+          and returns an empty list (no backfill on first call).
+        - Does not paginate; assumes the full history fits in a single response (<= 500).
+
+        Args:
+            history_types: Optional list like ["labelAdded", "labelRemoved"].
+
+        Returns:
+            List of history record dicts.
+        """
+        if not history_types:
+            history_types = []
+        self._oauth_login()
+        user_id = "me"
+
+        # Initialize the starting history id if not set; no backfill on first call
+        if not self._last_history_id:
+            try:
+                profile = self.service.users().getProfile(userId=user_id).execute()
+                self._last_history_id = profile.get("historyId")
+            except Exception as e:
+                raise Exception(f"Failed to initialize Gmail history cursor: {e}")
+            return []
+
+        try:
+            resp = self.service.users().history().list(
+                userId=user_id,
+                startHistoryId=self._last_history_id,
+                historyTypes=history_types,
+                maxResults=500,
+            ).execute()
+        except Exception as e:
+            raise Exception(f"Failed to list Gmail history: {e}")
+
+        # Update the in-memory cursor to the newest history id we can infer
+        # Top-level historyId (point to last history included in the response)
+        self._last_history_id = resp.get("historyId")
+
+        return resp.get("history", [])
