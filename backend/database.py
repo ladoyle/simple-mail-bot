@@ -21,7 +21,7 @@ def get_db():
 
 class EmailStatistic(Base):
     __tablename__ = "email_statistics"
-    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(Integer, primary_key=True)
     processed = Column(Integer, default=0)
     rule_id = Column(Integer, nullable=False)
     rule_name = Column(String, nullable=False)

@@ -16,6 +16,10 @@ def get_gmail_client():
 
 
 class GmailClient:
+    # ----------------------------
+    ## Gmail OAuth integration
+    # ----------------------------
+
     # If modifying these scopes, delete the file token.pickle.
     SCOPES = [
         'https://www.googleapis.com/auth/gmail.labels',  # For creating/modifying labels
@@ -56,14 +60,20 @@ class GmailClient:
                      credentials=self.creds,
                      discoveryServiceUrl="https://gmail.googleapis.com/$discovery/rest?version=v1")
 
+    # -------------
     ## Labels
+    # -------------
+
+    def _list_labels(self):
+        """Lists all labels in the user's account."""
+        results = self.service.users().labels().list(userId='me').execute()
+        return results.get('labels', [])
+
     def list_labels(self):
         """Lists all labels in the user's account."""
         self._oauth_login()
         try:
-            results = self.service.users().labels().list(userId='me').execute()
-            labels = results.get('labels', [])
-            return labels
+            return self._list_labels()
         except Exception as e:
             raise Exception(f"Failed to list labels: {e}")
 
@@ -98,7 +108,10 @@ class GmailClient:
         except Exception as e:
             raise Exception(f"Failed to delete label: {str(e)}")
 
+    # --------------
     ## Filters
+    # --------------
+
     def create_filter(self, criteria: dict, actions: dict):
         """
         Create a Gmail filter
@@ -118,6 +131,7 @@ class GmailClient:
                     'forward': 'forward@example.com'
                 }
         """
+        self._oauth_login()
         try:
             filter_object = {
                 'criteria': criteria,
@@ -134,6 +148,7 @@ class GmailClient:
 
     def list_filters(self):
         """List all filters in the Gmail account."""
+        self._oauth_login()
         try:
             results = self.service.users().settings().filters().list(
                 userId='me'
@@ -144,6 +159,7 @@ class GmailClient:
 
     def delete_filter(self, filter_id: str):
         """Delete a specific filter by ID."""
+        self._oauth_login()
         try:
             self.service.users().settings().filters().delete(
                 userId='me',
@@ -152,3 +168,28 @@ class GmailClient:
             return True
         except Exception as e:
             raise Exception(f"Failed to delete filter: {str(e)}")
+
+    def get_unread_count(self) -> int:
+        """
+        Return the number of unread messages using the UNREAD system label.
+        Leverages labels.get to read messagesUnread for the UNREAD label.
+        """
+        self._oauth_login()
+        try:
+            all_labels = self._list_labels()
+            unread_label_id = [lid for lid in all_labels if lid['id'] == 'UNREAD'][0]
+            label = self.service.users().labels().get(userId='me', id=unread_label_id).execute()
+            return int(label.get('messagesUnread', 0))
+        except Exception as e:
+            raise Exception(f"Failed to retrieve unread count from Gmail: {e}")
+
+    def get_total_count(self) -> int:
+        """
+        Return the total number of messages using the user profile endpoint.
+        """
+        self._oauth_login()
+        try:
+            profile = self.service.users().getProfile(userId='me').execute()
+            return int(profile.get('messagesTotal', 0))
+        except Exception as e:
+            raise Exception(f"Failed to retrieve total message count from Gmail: {e}")
