@@ -1,3 +1,4 @@
+import logging as log
 from typing import Optional
 
 from fastapi import Depends
@@ -29,6 +30,7 @@ class MailLabelService:
 
     def _upsert_db(self, labels: list[dict]):
         """Helper method to add labels to the local database."""
+        log.warning(f"Upserting {len(labels)} labels into DB during sync")
         self.db.add_all(
             [EmailLabel(gmail_id=lbl['id'], name=lbl['name']) for lbl in labels]
         )
@@ -36,6 +38,7 @@ class MailLabelService:
 
     def _db_delete(self, labels: list[EmailLabel]):
         """Helper method to delete labels from the local database."""
+        log.warning(f"Deleting {len(labels)} labels from DB during sync")
         for label in labels:
             self.db.delete(label)
         self.db.commit()
@@ -45,12 +48,14 @@ class MailLabelService:
             # Get from Gmail (golden source)
             gmail_labels = self.gmail_client.list_labels()
             gmail_label_map = {lbl['id']: lbl for lbl in gmail_labels}
+            log.info(f"Fetched {len(gmail_label_map)} labels from Gmail")
         except Exception as e:
             raise RuntimeError(f"Failed to fetch labels from Gmail: {e}")
 
         # Fetch all local labels
         local_labels = self.db.execute(select(EmailLabel)).scalars().all()
         local_label_map = {label.gmail_id: label for label in local_labels}
+        log.info(f"Fetched {len(local_label_map)} labels from DB")
 
         # Add new labels from Gmail to DB
         self._upsert_db([lbl for gid, lbl in gmail_label_map.items() if gid not in local_label_map])

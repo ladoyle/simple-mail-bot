@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging as log
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Set, Optional
@@ -12,7 +13,7 @@ from backend import database
 from backend.database import EmailRule, EmailStatistic
 from backend.gmail_client import GmailClient, get_gmail_client
 
-_history_engine_singleton = None
+history_engine_singleton = None
 
 
 def get_history_engine_service(
@@ -23,13 +24,13 @@ def get_history_engine_service(
     Dependency to get a singleton MailHistoryEngineService.
     Call start() once on application boot to launch the scheduler.
     """
-    global _history_engine_singleton
-    if _history_engine_singleton is None:
-        _history_engine_singleton = MailHistoryEngineService(db_session=db, gmail_client=gmail_client)
-    return _history_engine_singleton
+    global history_engine_singleton
+    if history_engine_singleton is None:
+        history_engine_singleton = HistoryEngine(db_session=db, gmail_client=gmail_client)
+    return history_engine_singleton
 
 
-class MailHistoryEngineService:
+class HistoryEngine:
     """
     History Engine:
     - At 4:00 AM (UTC) every day, aggregates Gmail history changes since the last run.
@@ -52,6 +53,7 @@ class MailHistoryEngineService:
         """
         Starts the background scheduler (idempotent).
         """
+        log.info("Starting mail history engine")
         if self._task and not self._task.done():
             return
         self._task = asyncio.create_task(self._scheduler_loop(), name="mail-history-engine-4am")
@@ -60,6 +62,7 @@ class MailHistoryEngineService:
         """
         Cancels the background scheduler, if running.
         """
+        log.info("Stopping mail history engine")
         if self._task and not self._task.done():
             self._task.cancel()
 
@@ -101,6 +104,7 @@ class MailHistoryEngineService:
           Each message is counted at most once per rule for this run.
         - Insert EmailStatistic totals with current timestamp.
         """
+        log.info(f"Loading mail history stats at {datetime.now(timezone.utc)}")
         # 1) Load rules
         rules = self.db.execute(select(EmailRule)).scalars().all()
         if not rules:
