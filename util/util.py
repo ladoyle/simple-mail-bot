@@ -34,10 +34,6 @@ def pixel_to_ascii(image):
 def plus_figlet(text):
     """Render text as ASCII art using '+' for filled areas."""
     ascii_text = pyfiglet.figlet_format(text, font="banner")  # You can choose other fonts
-    ascii_plus = ascii_text.replace("#", "+").replace("@", "+") \
-        .replace("%", "+").replace("*", "+") \
-        .replace("o", "+").replace(".", "+")
-    ascii_plus = "".join("+" if c != " " and c != "\n" else c for c in ascii_plus)
     return ascii_text
 
 def print_startup_banner():
