@@ -32,10 +32,10 @@ class EmailRule(Base):
     id = Column(Integer, primary_key=True, index=True)
     gmail_id = Column(String, nullable=False)
     name = Column(String, unique=True)
-    criteria = Column(String)
+    criteria = Column(String, default="")
     addLabelIds = Column(JSON, nullable=False, default=list)
     removeLabelIds = Column(JSON, nullable=False, default=list)
-    forward = Column(String, nullable=True)
+    forward = Column(String, default="")
 
 
 class EmailLabel(Base):

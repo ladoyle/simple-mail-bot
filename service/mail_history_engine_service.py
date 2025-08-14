@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import json
-import os
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Set, Optional
 
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import database
@@ -34,26 +33,16 @@ class MailHistoryEngineService:
     """
     History Engine:
     - At 4:00 AM (UTC) every day, aggregates Gmail history changes since the last run.
-    - Builds a mapping from EmailRule.addLabelIds/removeLabelIds to EmailRule (id, name).
-    - Uses Gmail history API to count labelAdded/labelRemoved occurrences per rule.
+    - Builds a mapping from EmailRule labelIds to rule_id.
+    - Uses Gmail client (which maintains history state) to pull history and count
+      messages that had those labels added/removed.
     - Persists a row in EmailStatistic with (timestamp, processed, rule_id, rule_name).
-
-    Notes:
-    - The Gmail History API requires a startHistoryId. We persist it in a small state file.
-    - On first run (no stored history id), we initialize from the current profile historyId
-      and skip backfill (to avoid processing all historical data).
     """
-
-    STATE_FILE = ".gmail_history_state.json"  # stored under project base dir
-    STATE_KEY = "last_history_id"
 
     def __init__(self, db_session: Session, gmail_client: GmailClient):
         self.db: Session = db_session
         self.gmail_client = gmail_client
         self._task: Optional[asyncio.Task] = None
-        # Resolve state file under project root
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self._state_path = os.path.join(base_dir, self.STATE_FILE)
 
     # ---------------------------
     # Public lifecycle
@@ -106,52 +95,57 @@ class MailHistoryEngineService:
     async def run_once(self) -> None:
         """
         Performs a single aggregation cycle:
-        - Load rules and build label->rules mapping.
-        - Fetch Gmail history since last_history_id.
-        - Count label add/remove events per rule.
+        - Load rules and build labelId -> rule_id mapping.
+        - Fetch Gmail history via gmail_client.list_history (client maintains state).
+        - For each history entry, count messages whose label changes match a rule's labels.
+          Each message is counted at most once per rule for this run.
         - Insert EmailStatistic totals with current timestamp.
-        - Update last_history_id.
         """
-        # Build rule mappings
-        rules = self.db.query(EmailRule).all()
+        # 1) Load rules
+        rules = self.db.execute(select(EmailRule)).scalars().all()
         if not rules:
-            self._ensure_last_history_initialized()
             return
 
-        add_map, remove_map = self._build_label_rule_maps(rules)
+        # 2) Build mapping: labelId -> set(rule_id)
+        label_to_rule_ids, rule_names = self._build_label_to_rule_ids(list(rules))
 
-        # Load startHistoryId (initialize from profile if missing)
-        start_id = self._ensure_last_history_initialized()
-        if start_id is None:
-            # No history processed this time (just initialized to current), do nothing
-            return
+        # 3) Get history entries from the client (it maintains startHistoryId internally)
+        histories: List[dict] = self.gmail_client.list_history(history_types=["labelAdded", "labelRemoved"])
 
-        # Pull history and count label events
-        counts_by_rule: Dict[int, int] = {r.id: 0 for r in rules}
-        newest_history_id = start_id
+        # 4) For each rule, track unique message ids processed in this run
+        rule_to_message_ids: Dict[int, Set[str]] = {r.id: set() for r in rules}
 
-        for history, newest_history_id in self._iter_history_since(start_id):
-            # history is a dict with possible 'labelsAdded'/'labelsRemoved'
+        # 5) Accumulate based on labelsAdded / labelsRemoved
+        for history in histories:
+            # labelsAdded: [{ "message": { "id": ... }, "labelIds": [...] }, ...]
             for added in history.get("labelsAdded", []):
-                label_ids = set(added.get("labelIds", []) or [])
-                self._accumulate(counts_by_rule, add_map, label_ids)
+                msg = (added.get("message") or {})
+                mid = msg.get("id")
+                if not mid:
+                    continue
+                label_ids = added.get("labelIds") or []
+                self._collect_for_event(rule_to_message_ids, label_to_rule_ids, label_ids, mid)
 
+            # labelsRemoved: same structure
             for removed in history.get("labelsRemoved", []):
-                label_ids = set(removed.get("labelIds", []) or [])
-                self._accumulate(counts_by_rule, remove_map, label_ids)
+                msg = (removed.get("message") or {})
+                mid = msg.get("id")
+                if not mid:
+                    continue
+                label_ids = removed.get("labelIds") or []
+                self._collect_for_event(rule_to_message_ids, label_to_rule_ids, label_ids, mid)
 
-        # Persist totals with current timestamp
+        # 6) Persist totals with current timestamp (count unique messages per rule)
         ts = int(datetime.now(timezone.utc).timestamp())
         stats_to_add: List[EmailStatistic] = []
         for r in rules:
-            processed = int(counts_by_rule.get(r.id, 0))
-            # Always insert a row (including 0), to mark the run time
+            processed = len(rule_to_message_ids.get(r.id, set()))
             stats_to_add.append(
                 EmailStatistic(
                     timestamp=ts,
                     processed=processed,
                     rule_id=r.id,
-                    rule_name=r.name or "",
+                    rule_name=rule_names.get(r.id, r.name or ""),
                 )
             )
 
@@ -159,136 +153,43 @@ class MailHistoryEngineService:
             self.db.add_all(stats_to_add)
             self.db.commit()
 
-        # Update last_history_id to the latest we saw (or current profile if none)
-        self._update_last_history_id(newest_history_id)
+        # The gmail_client is expected to update its stored history id internally.
 
     # ---------------------------
-    # Label mappings and counting
+    # Mapping and accumulation
     # ---------------------------
 
     @staticmethod
-    def _build_label_rule_maps(
+    def _build_label_to_rule_ids(
             rules: List[EmailRule],
-    ) -> Tuple[Dict[str, List[Tuple[int, str]]], Dict[str, List[Tuple[int, str]]]]:
+    ) -> tuple[Dict[str, Set[int]], Dict[int, str]]:
         """
-        Returns:
-            add_map:    labelId -> list of (rule_id, rule_name) for addLabelIds
-            remove_map: labelId -> list of (rule_id, rule_name) for removeLabelIds
+        Build a single mapping of labelId -> set(rule_id) combining both addLabelIds and removeLabelIds.
+        Also returns a map of rule_id -> rule_name for storage.
         """
-        add_map: Dict[str, List[Tuple[int, str]]] = {}
-        remove_map: Dict[str, List[Tuple[int, str]]] = {}
+        label_to_rule_ids: Dict[str, Set[int]] = {}
+        rule_names: Dict[int, str] = {}
 
         for r in rules:
+            rule_names[r.id] = r.name or ""
             for lid in (r.addLabelIds or []):
-                add_map.setdefault(lid, []).append((r.id, r.name or ""))
+                label_to_rule_ids.setdefault(lid, set()).add(r.id)
             for lid in (r.removeLabelIds or []):
-                remove_map.setdefault(lid, []).append((r.id, r.name or ""))
+                label_to_rule_ids.setdefault(lid, set()).add(r.id)
 
-        return add_map, remove_map
+        return label_to_rule_ids, rule_names
 
     @staticmethod
-    def _accumulate(
-            counts_by_rule: Dict[int, int],
-            label_to_rules: Dict[str, List[Tuple[int, str]]],
-            seen_label_ids: set[str],
+    def _collect_for_event(
+            rule_to_message_ids: Dict[int, Set[str]],
+            label_to_rule_ids: Dict[str, Set[int]],
+            label_ids: List[str],
+            message_id: str,
     ) -> None:
         """
-        For each label in seen_label_ids, increment counts for mapped rules.
+        For the given message and its associated label_ids, mark the message as processed
+        for every rule that references any of those label ids. Deduplicates per rule.
         """
-        for lid in seen_label_ids:
-            for rule_id, _rule_name in label_to_rules.get(lid, []):
-                counts_by_rule[rule_id] = counts_by_rule.get(rule_id, 0) + 1
-
-    # ---------------------------
-    # Gmail History iteration
-    # ---------------------------
-
-    def _iter_history_since(self, start_history_id: int):
-        """
-        Yields (history_record_dict, latest_history_id_seen) for all history
-        items since start_history_id. Pages through results.
-        Uses historyTypes labelAdded/labelRemoved only.
-        """
-        service = self.gmail_client.service
-        user_id = "me"
-        page_token = None
-        latest_seen = start_history_id
-
-        while True:
-            req = (
-                service.users()
-                .history()
-                .list(
-                    userId=user_id,
-                    startHistoryId=start_history_id,
-                    historyTypes=["labelAdded", "labelRemoved"],
-                    pageToken=page_token,
-                    maxResults=500,
-                )
-            )
-            resp = req.execute()
-            histories = resp.get("history", [])
-            latest_seen = max(latest_seen, int(resp.get("historyId", latest_seen)))
-
-            for h in histories:
-                # Each 'h' may also contain its own 'id' (the point-in-time historyId)
-                if "id" in h:
-                    try:
-                        latest_seen = max(latest_seen, int(h["id"]))
-                    except Exception:
-                        pass
-                yield h, latest_seen
-
-            page_token = resp.get("nextPageToken")
-            if not page_token:
-                break
-
-    # ---------------------------
-    # State management
-    # ---------------------------
-
-    def _ensure_last_history_initialized(self) -> Optional[int]:
-        """
-        Ensures we have a stored lastHistoryId.
-        - If the state file exists, returns the stored lastHistoryId.
-        - If not, initializes it to the current profile.historyId and returns None
-          to skip processing on this first run.
-        """
-        state = self._load_state()
-        if state and self.STATE_KEY in state:
-            try:
-                return int(state[self.STATE_KEY])
-            except Exception:
-                # If corrupted, reinitialize from profile
-                pass
-
-        # Initialize from current profile (no backfill on first run)
-        profile = self.gmail_client.service.users().getProfile(userId="me").execute()
-        current_history_id = int(profile.get("historyId", 0))
-        self._save_state({self.STATE_KEY: current_history_id})
-        return None
-
-    def _update_last_history_id(self, latest_history_id: int) -> None:
-        """
-        Stores the latest processed history id.
-        """
-        if latest_history_id is None:
-            return
-        self._save_state({self.STATE_KEY: int(latest_history_id)})
-
-    def _load_state(self) -> Optional[dict]:
-        try:
-            if os.path.exists(self._state_path):
-                with open(self._state_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            return None
-        return None
-
-    def _save_state(self, state: dict) -> None:
-        try:
-            with open(self._state_path, "w", encoding="utf-8") as f:
-                json.dump(state, f)
-        except Exception:
-            # Best-effort; avoid crashing the engine if state write fails
-            pass
+        for lid in label_ids:
+            for rid in label_to_rule_ids.get(lid, set()):
+                rule_to_message_ids.setdefault(rid, set()).add(message_id)

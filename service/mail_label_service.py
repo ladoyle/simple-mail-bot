@@ -59,7 +59,7 @@ class MailLabelService:
         self._db_delete([lbl for lbl in local_labels if lbl.gmail_id not in gmail_label_map])
 
         # Return synced labels from db
-        return [lbl for lbl in self.db.execute(select(EmailLabel).order_by(EmailLabel.name)).scalars().all()]
+        return list(self.db.execute(select(EmailLabel).order_by(EmailLabel.name)).scalars().all())
 
     def create_label(self, req: LabelRequest):
         try:
