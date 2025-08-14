@@ -13,5 +13,7 @@ app.include_router(stats_ctrl.stats_router)
 
 if __name__ == "__main__":
     import uvicorn
+    from util.util import print_startup_banner
+    print_startup_banner()
     uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
     
