@@ -6,7 +6,8 @@ import pyfiglet
 
 # Path to your robot logo
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMAGE_PATH = os.path.join(BASE_DIR, 'img\\TechNoisePresentationLogo.png')
+DIR_SEP = os.path.sep
+IMAGE_PATH = os.path.join(BASE_DIR, f'img{DIR_SEP}TechNoisePresentationLogo.png')
 
 # ASCII characters from dark to light
 ASCII_CHARS = "@%#*+=-:. "
