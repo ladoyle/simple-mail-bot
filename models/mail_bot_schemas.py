@@ -34,3 +34,8 @@ class RuleResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OauthRequest(BaseModel):
+    email: str
+    code: str

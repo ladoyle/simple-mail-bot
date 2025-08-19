@@ -45,5 +45,11 @@ class EmailLabel(Base):
     name = Column(String, nullable=False)
 
 
+class AuthorizedUsers(Base):
+    __tablename__ = "authorized_users"
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, nullable=False)
+
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
