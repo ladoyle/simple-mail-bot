@@ -22,12 +22,12 @@ def get_oauth_service(
 
 
 class MailOAuthService:
-    def __init__(self, gmail_client, db_session: Session):
+    def __init__(self, gmail_client: GmailClient, db_session: Session):
         self.gmail_client = gmail_client
         self.db = db_session
 
-    def _add_user(self, email):
-        self.db.add(AuthorizedUsers(email=email))
+    def _add_user(self, email, history_id):
+        self.db.add(AuthorizedUsers(email=email, last_history_id=history_id))
         self.db.commit()
 
     def get_authorization_url(self):
@@ -38,10 +38,10 @@ class MailOAuthService:
 
     def handle_callback(self, code) -> tuple[str, str]:
         try:
-            user_email, access_token = self.gmail_client.exchange_code_for_token(code)
+            user_email, history_id, access_token = self.gmail_client.exchange_code_for_token(code)
         except Exception as e:
             raise RuntimeError(f"Failed to exchange code for token: {e}")
-        self._add_user(user_email)
+        self._add_user(user_email, history_id)
         return user_email, access_token
 
     def remove_user(self, email):

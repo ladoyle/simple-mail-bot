@@ -40,10 +40,11 @@ class MailRuleService:
     # Internal utilities
     # ---------------------------
 
-    def _upsert_db_rule(self, rules: list[dict]) -> None:
+    def _upsert_db_rule(self, user_email: str, rules: list[dict]) -> None:
         """Helper method to upsert multiple rules into the local database."""
         log.warning(f"Upserting {len(rules)} rules into DB during sync")
         self.db.add_all([EmailRule(
+            email_address=user_email,
             gmail_id=r["id"],
             rule_name=r.get("rule_name", "Unnamed Rule"),
             criteria=r.get("criteria", ''),
@@ -64,7 +65,7 @@ class MailRuleService:
     # Public API used by controller
     # ---------------------------
 
-    def create_rule(self, req: RuleRequest) -> int:
+    def create_rule(self, user_email: str, req: RuleRequest) -> int:
         """
         Create a rule in Gmail, then upsert to DB. Returns DB rule id.
         """
@@ -77,19 +78,15 @@ class MailRuleService:
                     'addLabelIds': req.add_label_ids,
                     'removeLabelIds': req.remove_label_ids,
                     'forward': req.forward
-                }
+                },
+                user_email=user_email
             )
-        except RuntimeError as e:
+        except Exception as e:
             raise RuntimeError(f"Failed to create rule in Gmail: {e}")
 
         # Upsert into DB by rule_name
-        db_rule = self.db.get(EmailRule, gmail_rule['id'])
-        if db_rule:
-            db_rule.name = req.rule_name
-            db_rule.criteria = req.criteria
-            db_rule.action = req.action
-
         db_rule = EmailRule(
+            email_address=user_email,
             gmail_id=gmail_rule['id'],
             rule_name=req.rule_name,
             criteria=req.criteria,
@@ -100,7 +97,7 @@ class MailRuleService:
         self.db.refresh(db_rule)
         return db_rule.id
 
-    def delete_rule(self, rule_id: int) -> bool:
+    def delete_rule(self, user_email: str, rule_id: int) -> bool:
         """
         Delete a rule: remove from Gmail first, then from DB. Returns True if deleted, False if not found.
         """
@@ -111,9 +108,10 @@ class MailRuleService:
         try:
             # Delete from Gmail first (source of truth)
             self.gmail_client.delete_filter(
-                filter_id=db_rule.gmail_id
+                filter_id=db_rule.gmail_id,
+                user_email=user_email
             )
-        except RuntimeError as e:
+        except Exception as e:
             raise RuntimeError(f"Failed to delete rule from Gmail: {e}")
 
         # Delete from DB
@@ -121,13 +119,13 @@ class MailRuleService:
 
         return True
 
-    def list_rules(self) -> List[EmailRule]:
+    def list_rules(self, user_email: str) -> List[EmailRule]:
         """
         List rules by syncing from Gmail first (Gmail is the gold standard)
         and returning the DB rows.
         """
         try:
-            gmail_rules = self.gmail_client.list_filters()
+            gmail_rules = self.gmail_client.list_filters(user_email)
             # map by rule_name (assumed unique)
             gmail_map = {r["id"]: r for r in gmail_rules}
             log.info(f"Fetched {len(gmail_map)} rules from Gmail")
@@ -141,7 +139,8 @@ class MailRuleService:
 
         # Upsert all Gmail rules
         self._upsert_db_rule(
-            [r for i, r in gmail_rules.items() if i not in local_map]
+            user_email,
+            [r for r in gmail_rules if r["id"] not in local_map]
             )
 
         # Remove DB rules not present in Gmail

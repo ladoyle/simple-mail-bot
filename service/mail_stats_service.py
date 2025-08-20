@@ -39,32 +39,33 @@ class MailStatsService:
     # Processed counters (DB-based)
     # ---------------------------
 
-    def get_total_processed(self, rule_id: int) -> int:
-        return self._sum_processed(rule_id=rule_id)
+    def get_total_processed(self, user_email: str, rule_id: int) -> int:
+        return self._sum_processed(email_address=user_email, rule_id=rule_id)
 
-    def get_daily_processed(self, rule_id: int) -> int:
+    def get_daily_processed(self, user_email: str, rule_id: int) -> int:
         """
         Sum processed for the last 24 hours (rolling window).
         """
         now_ts = self._now_utc_timestamp()
         start_ts = now_ts - 24 * 60 * 60
-        return self._sum_processed(rule_id=rule_id, start_ts=start_ts, end_ts=now_ts)
+        return self._sum_processed(email_address=user_email, rule_id=rule_id, start_ts=start_ts, end_ts=now_ts)
 
-    def get_weekly_processed(self, rule_id: int) -> int:
+    def get_weekly_processed(self, user_email: str, rule_id: int) -> int:
         start_ts = self._start_of_week_utc_timestamp()
-        return self._sum_processed(rule_id=rule_id, start_ts=start_ts)
+        return self._sum_processed(email_address=user_email, rule_id=rule_id, start_ts=start_ts)
 
-    def get_monthly_processed(self, rule_id: int) -> int:
+    def get_monthly_processed(self, user_email: str, rule_id: int) -> int:
         start_ts = self._start_of_month_utc_timestamp()
-        return self._sum_processed(rule_id=rule_id, start_ts=start_ts)
+        return self._sum_processed(email_address=user_email, rule_id=rule_id, start_ts=start_ts)
 
-    def _sum_processed(self, rule_id: int, start_ts: Optional[int] = None, end_ts: Optional[int] = None) -> int:
+    def _sum_processed(self, email_address: str, rule_id: int, start_ts: Optional[int] = None, end_ts: Optional[int] = None) -> int:
         """
-        Sum EmailStatistic.processed for a rule within an optional [start_ts, end_ts) range.
+        Sum EmailStatistic.processed for a rule and email address within an optional [start_ts, end_ts) range.
         Timestamps are stored as integer epoch seconds (assumed UTC).
         """
         q = self.db.query(func.coalesce(func.sum(EmailStatistic.processed), 0)).filter(
-            EmailStatistic.rule_id == rule_id
+            EmailStatistic.rule_id == rule_id,
+            EmailStatistic.email_address == email_address
         )
         if start_ts is not None:
             q = q.filter(EmailStatistic.timestamp >= start_ts)
@@ -101,22 +102,22 @@ class MailStatsService:
     # Read/Unread counters (Gmail-based)
     # ---------------------------
 
-    def get_unread_count(self) -> int:
+    def get_unread_count(self, user_email: str) -> int:
         """
         Retrieve unread count directly from Gmail via the client.
         """
         try:
-            return self.gmail_client.get_unread_count()
+            return self.gmail_client.get_unread_count(user_email)
         except Exception as e:
             raise RuntimeError(f"Failed to retrieve unread emails count: {e}")
 
-    def get_read_count(self) -> int:
+    def get_read_count(self, user_email) -> int:
         """
         Retrieve read count as total - unread, both from the Gmail client.
         """
         try:
-            total = self.gmail_client.get_total_count()
-            unread = self.gmail_client.get_unread_count()
+            total = self.gmail_client.get_total_count(user_email)
+            unread = self.gmail_client.get_unread_count(user_email)
             read = total - unread
             return read if read >= 0 else 0
         except Exception as e:
