@@ -111,13 +111,17 @@ class GmailClient:
         except Exception as e:
             raise Exception(f"Failed to list labels: {e}")
 
-    def create_label(self, name: str, user_email: str) -> dict:
+    def create_label(self, user_email: str, name: str, text_color: str, bg_color: str) -> dict:
         """Creates a new label."""
         try:
             label_object = {
                 'name': name,
                 'messageListVisibility': 'show',
-                'labelListVisibility': 'labelShow'
+                'labelListVisibility': 'labelShow',
+                'color': {
+                    "textColor": text_color,
+                    "backgroundColor": bg_color
+                }
             }
 
             log.info(f"Creating label '{name}' in Gmail API.")

@@ -25,8 +25,8 @@ def create_label(
         mail_label_service: MailLabelService = Depends(get_label_service)
 ):
     log.info(f"Creating label with name={req.name}")
-    label_id = mail_label_service.create_label(user_email, req)
-    return {"message": "Label created", "label": label_id}
+    label = mail_label_service.create_label(user_email, req)
+    return {"message": f"Label created, {label.name}", "labelId": label.id}
 
 
 @label_router.delete("/{label_id}", response_model=dict)
@@ -39,4 +39,4 @@ def delete_label(
     deleted = mail_label_service.delete_label(user_email, label_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Label not found")
-    return {"message": "Label deleted", "label": label_id}
+    return {"message": "Label deleted", "labelId": label_id}

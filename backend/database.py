@@ -46,6 +46,8 @@ class EmailLabel(Base):
     email_address = Column(String, default="")
     gmail_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
+    text_color = Column(String, default="#000000")
+    background_color = Column(String, default="#FFFFFF")
 
 
 class AuthorizedUsers(Base):

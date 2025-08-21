@@ -2,14 +2,17 @@ from pydantic import BaseModel
 
 
 class LabelRequest(BaseModel):
-    email_id: str
     label: str
+    text_color: str
+    background_color: str
 
 
 class LabelResponse(BaseModel):
     id: int
     gmail_id: str
     name: str
+    text_color: str
+    background_color: str
 
     class Config:
         from_attributes = True

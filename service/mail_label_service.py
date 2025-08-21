@@ -74,7 +74,7 @@ class MailLabelService:
     def create_label(self, user_email: str, req: LabelRequest):
         try:
             # Create label in Gmail (golden source)
-            gmail_label = self.gmail_client.create_label(user_email, req.name)
+            gmail_label = self.gmail_client.create_label(user_email, req.label, req.text_color, req.background_color)
         except Exception as e:
             raise RuntimeError(f"Failed to create label in Gmail: {e}")
 
@@ -87,7 +87,7 @@ class MailLabelService:
         self.db.add(label)
         self.db.commit()
         self.db.refresh(label)
-        return label.id
+        return label
 
     def delete_label(self, user_email: str, label_id: int):
         label: Optional[EmailLabel, None] = self.db.get(EmailLabel, label_id)

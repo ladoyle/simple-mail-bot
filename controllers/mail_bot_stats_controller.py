@@ -48,7 +48,10 @@ def get_unread(
         mail_stats_service: MailStatsService = Depends(get_stats_service)
 ):
     log.info(f"Getting unread count from gmail")
-    return {"unread": mail_stats_service.get_unread_count(user_email)}
+    return {
+        "message": f"Unread message count for {user_email}",
+        "unread": mail_stats_service.get_unread_count(user_email)
+    }
 
 @stats_router.get("/read")
 def get_read(
@@ -56,4 +59,7 @@ def get_read(
         mail_stats_service: MailStatsService = Depends(get_stats_service)
 ):
     log.info(f"Getting read count from gmail")
-    return {"read": mail_stats_service.get_read_count(user_email)}
+    return {
+        "message": f"Read message count for {user_email}",
+        "read": mail_stats_service.get_read_count(user_email)
+    }

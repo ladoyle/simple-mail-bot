@@ -24,8 +24,8 @@ def create_rule(
         mail_rule_service: MailRuleService = Depends(get_rule_service)
 ):
     log.info(f"Creating rule with name={req.name}")
-    rule_id = mail_rule_service.create_rule(user_email, req)
-    return {"message": "Rule created", "rule id": rule_id}
+    rule = mail_rule_service.create_rule(user_email, req)
+    return {"message": f"Rule created, {rule.name}", "ruleId": rule.id}
 
 
 @rule_router.delete("/{rule_id}", response_model=dict)
@@ -38,4 +38,4 @@ def delete_rule(
     deleted = mail_rule_service.delete_rule(user_email, rule_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return {"message": "Rule deleted", "rule id": rule_id}
+    return {"message": "Rule deleted", "ruleId": rule_id}

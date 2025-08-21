@@ -65,7 +65,7 @@ class MailRuleService:
     # Public API used by controller
     # ---------------------------
 
-    def create_rule(self, user_email: str, req: RuleRequest) -> int:
+    def create_rule(self, user_email: str, req: RuleRequest) -> EmailRule:
         """
         Create a rule in Gmail, then upsert to DB. Returns DB rule id.
         """
@@ -95,7 +95,7 @@ class MailRuleService:
         self.db.add(db_rule)
         self.db.commit()
         self.db.refresh(db_rule)
-        return db_rule.id
+        return db_rule
 
     def delete_rule(self, user_email: str, rule_id: int) -> bool:
         """
