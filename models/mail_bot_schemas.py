@@ -1,25 +1,27 @@
-from pydantic import BaseModel
+from typing import Optional
+
+from pydantic import BaseModel, Field
 
 
 class LabelRequest(BaseModel):
     label: str
-    text_color: str
-    background_color: str
+    text_color: str = Field(..., alias="textColor")
+    background_color: str = Field(..., alias="backgroundColor")
 
 
 class LabelResponse(BaseModel):
     id: int
-    gmail_id: str
+    gmail_id: str = Field(..., alias="gmailId")
     name: str
-    text_color: str
-    background_color: str
+    text_color: str = Field(..., alias="textColor")
+    background_color: str = Field(..., alias="backgroundColor")
 
     class Config:
         from_attributes = True
 
 
 class RuleRequest(BaseModel):
-    rule_name: str
+    rule_name: str = Field(..., alias="ruleName")
     criteria: str
     addLabelIds: list[str]
     removeLabelIds: list[str]
@@ -28,7 +30,7 @@ class RuleRequest(BaseModel):
 
 class RuleResponse(BaseModel):
     id: int
-    gmail_id: str
+    gmail_id: str = Field(..., alias="gmailId")
     name: str
     criteria: str
     addLabelIds: list[str]
@@ -40,5 +42,5 @@ class RuleResponse(BaseModel):
 
 
 class OauthRequest(BaseModel):
-    email: str
-    code: str
+    email: Optional[str] = None
+    code: Optional[str] = None

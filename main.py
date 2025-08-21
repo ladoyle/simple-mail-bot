@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from controllers import mail_bot_oauth_controller as oauth_ctrl
 from controllers import mail_bot_label_controller as label_ctrl
 from controllers import mail_bot_rule_controller as rule_ctrl
 from controllers import mail_bot_stats_controller as stats_ctrl
@@ -25,6 +26,7 @@ async def lifespan(bot_app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(oauth_ctrl.oauth_router)
 app.include_router(label_ctrl.label_router)
 app.include_router(rule_ctrl.rule_router)
 app.include_router(stats_ctrl.stats_router)

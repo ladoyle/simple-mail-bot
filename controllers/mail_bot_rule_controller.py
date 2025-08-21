@@ -8,7 +8,7 @@ from service.mail_rule_service import get_rule_service, MailRuleService
 rule_router = APIRouter(prefix="/rules")
 
 
-@rule_router.get("/", response_model=List[RuleResponse])
+@rule_router.get("/list", response_model=List[RuleResponse])
 def list_rules(
         user_email: str = Header(..., alias="user-email"),
         mail_rule_service: MailRuleService = Depends(get_rule_service)
@@ -17,25 +17,25 @@ def list_rules(
     return mail_rule_service.list_rules(user_email)
 
 
-@rule_router.post("/", response_model=dict)
+@rule_router.post("/create", response_model=dict)
 def create_rule(
         req: RuleRequest,
         user_email: str = Header(..., alias="user-email"),
         mail_rule_service: MailRuleService = Depends(get_rule_service)
 ):
-    log.info(f"Creating rule with name={req.name}")
+    log.info(f"Creating rule with name={req.rule_name}")
     rule = mail_rule_service.create_rule(user_email, req)
     return {"message": f"Rule created, {rule.name}", "ruleId": rule.id}
 
 
-@rule_router.delete("/{rule_id}", response_model=dict)
+@rule_router.delete("/delete", response_model=dict)
 def delete_rule(
-        rule_id: int,
+        ruleId: int,
         user_email: str = Header(..., alias="user-email"),
         mail_rule_service: MailRuleService = Depends(get_rule_service)
 ):
-    log.info(f"Deleting rule with id={rule_id}")
-    deleted = mail_rule_service.delete_rule(user_email, rule_id)
+    log.info(f"Deleting rule with id={ruleId}")
+    deleted = mail_rule_service.delete_rule(user_email, ruleId)
     if not deleted:
         raise HTTPException(status_code=404, detail="Rule not found")
-    return {"message": "Rule deleted", "ruleId": rule_id}
+    return {"message": "Rule deleted", "ruleId": ruleId}

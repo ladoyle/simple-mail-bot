@@ -26,11 +26,12 @@ def callback(req: OauthRequest, oauth_service: MailOAuthService = Depends(get_oa
 @oauth_router.post("/logout")
 def logout(request: OauthRequest, oauth_service: MailOAuthService = Depends(get_oauth_service)):
     user_email = request.email
-    if user_email:
-        removed = oauth_service.remove_user(user_email)
-        if not removed:
-            raise HTTPException(status_code=404, detail="User not found")
-        response = RedirectResponse(url="/")
-        response.body = json.dumps({"message": f'Successfully logged out user {user_email}', "status": 'success'}).encode("utf-8")
-        return response
-    raise HTTPException(status_code=401, detail="No email provided")
+    if not user_email:
+        raise HTTPException(status_code=400, detail="No email provided")
+
+    removed = oauth_service.remove_user(user_email)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"User not found, {user_email}")
+    response = RedirectResponse(url="/")
+    response.body = json.dumps({"message": f'Successfully logged out user {user_email}', "status": 'success'}).encode("utf-8")
+    return response

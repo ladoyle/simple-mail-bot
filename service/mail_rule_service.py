@@ -75,8 +75,8 @@ class MailRuleService:
             gmail_rule = self.gmail_client.create_filter(
                 criteria=json.loads(req.criteria),
                 actions={
-                    'addLabelIds': req.add_label_ids,
-                    'removeLabelIds': req.remove_label_ids,
+                    'addLabelIds': req.addLabelIds,
+                    'removeLabelIds': req.removeLabelIds,
                     'forward': req.forward
                 },
                 user_email=user_email

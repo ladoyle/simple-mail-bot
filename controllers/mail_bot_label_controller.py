@@ -9,7 +9,7 @@ from service.mail_label_service import get_label_service, MailLabelService
 label_router = APIRouter(prefix="/labels")
 
 
-@label_router.get("/", response_model=List[LabelResponse])
+@label_router.get("/list", response_model=List[LabelResponse])
 def list_labels(
         user_email: str = Header(..., alias="user-email"),
         mail_label_service: MailLabelService = Depends(get_label_service)
@@ -18,25 +18,25 @@ def list_labels(
     return mail_label_service.list_labels(user_email)
 
 
-@label_router.post("/", response_model=dict)
+@label_router.post("/create", response_model=dict)
 def create_label(
         req: LabelRequest,
         user_email: str = Header(..., alias="user-email"),
         mail_label_service: MailLabelService = Depends(get_label_service)
 ):
-    log.info(f"Creating label with name={req.name}")
+    log.info(f"Creating label with name={req.label}")
     label = mail_label_service.create_label(user_email, req)
     return {"message": f"Label created, {label.name}", "labelId": label.id}
 
 
-@label_router.delete("/{label_id}", response_model=dict)
+@label_router.delete("/delete", response_model=dict)
 def delete_label(
-        label_id: int,
+        labelId: int,
         user_email: str = Header(..., alias="user-email"),
         mail_label_service: MailLabelService = Depends(get_label_service)
 ):
-    log.info(f"Deleting label with id={label_id}")
-    deleted = mail_label_service.delete_label(user_email, label_id)
+    log.info(f"Deleting label with id={labelId}")
+    deleted = mail_label_service.delete_label(user_email, labelId)
     if not deleted:
         raise HTTPException(status_code=404, detail="Label not found")
-    return {"message": "Label deleted", "labelId": label_id}
+    return {"message": "Label deleted", "labelId": labelId}
