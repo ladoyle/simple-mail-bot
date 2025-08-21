@@ -133,7 +133,9 @@ class MailRuleService:
             raise RuntimeError(f"Failed to list rules from Gmail: {e}")
 
         # Fetch local rules
-        local_rules = self.db.execute(select(EmailRule)).scalars().all()
+        local_rules = self.db.execute(
+            select(EmailRule).where(EmailRule.email_address == user_email)
+        ).scalars().all()
         local_map = {r.gmail_id: r for r in local_rules}
         log.info(f"Fetched {len(local_map)} rules from DB")
 
@@ -147,5 +149,7 @@ class MailRuleService:
         self._db_delete(
             [r for r in local_rules if r.gmail_id not in gmail_map]
         )
-        return list(self.db.execute(select(EmailRule).order_by(EmailRule.name)).scalars().all())
+        return list(self.db.execute(
+            select(EmailRule).where(EmailRule.email_address == user_email).order_by(EmailRule.name)
+        ).scalars().all())
 

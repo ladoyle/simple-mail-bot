@@ -56,7 +56,9 @@ class MailLabelService:
             raise RuntimeError(f"Failed to fetch labels from Gmail: {e}")
 
         # Fetch all local labels
-        local_labels = self.db.execute(select(EmailLabel)).scalars().all()
+        local_labels = self.db.execute(
+            select(EmailLabel).where(EmailLabel.email_address == user_email)
+        ).scalars().all()
         local_label_map = {label.gmail_id: label for label in local_labels}
         log.info(f"Fetched {len(local_label_map)} labels from DB")
 
