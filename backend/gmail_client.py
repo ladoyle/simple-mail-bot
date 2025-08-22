@@ -35,13 +35,19 @@ class GmailClient:
 
     def get_authorization_url(self):
         flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json', self.SCOPES)
+            'credentials.json',
+            scopes=self.SCOPES,
+            redirect_uri='http://localhost:8080/oauth/callback'
+        )
         auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', include_granted_scopes='true')
         return auth_url
 
     def exchange_code_for_token(self, code):
         flow = InstalledAppFlow.from_client_secrets_file(
-            'credentials.json', self.SCOPES)
+            'credentials.json',
+            scopes=self.SCOPES,
+            # redirect_uri='http://localhost:8080' - Error 400: (redirect_uri_mismatch) Bad Request
+        )
         flow.fetch_token(code=code)
         creds = flow.credentials
         profile = self.get_user_profile_from_creds(creds)

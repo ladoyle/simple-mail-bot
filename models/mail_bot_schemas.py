@@ -39,8 +39,3 @@ class RuleResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class OauthRequest(BaseModel):
-    email: Optional[str] = None
-    code: Optional[str] = None
