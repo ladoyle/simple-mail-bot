@@ -6,7 +6,7 @@ from service.mail_stats_service import MailStatsService, get_stats_service
 
 stats_router = APIRouter(prefix="/stats")
 
-@stats_router.get("/total_processed")
+@stats_router.get("/total-processed")
 def get_total_processed(
         ruleId: int,
         user_email: str = Header(..., alias="user-email"),
@@ -15,7 +15,7 @@ def get_total_processed(
     log.info(f"Getting total processed for rule={ruleId}")
     return {"processed": mail_stats_service.get_total_processed(user_email, ruleId)}
 
-@stats_router.get("/daily_processed")
+@stats_router.get("/daily-processed")
 def get_daily_processed(
         ruleId: int,
         user_email: str = Header(..., alias="user-email"),
@@ -24,7 +24,7 @@ def get_daily_processed(
     log.info(f"Getting daily processed for rule={ruleId}")
     return {"processed": mail_stats_service.get_daily_processed(user_email, ruleId)}
 
-@stats_router.get("/weekly_processed")
+@stats_router.get("/weekly-processed")
 def get_weekly_processed(
         ruleId: int,
         user_email: str = Header(..., alias="user-email"),
@@ -33,7 +33,7 @@ def get_weekly_processed(
     log.info(f"Getting weekly processed for rule={ruleId}")
     return {"processed": mail_stats_service.get_weekly_processed(user_email, ruleId)}
 
-@stats_router.get("/monthly_processed")
+@stats_router.get("/monthly-processed")
 def get_monthly_processed(
         ruleId: int,
         user_email: str = Header(..., alias="user-email"),
