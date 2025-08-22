@@ -95,7 +95,7 @@ class MailStatsService:
 
     def _start_of_month_utc_timestamp(self) -> int:
         now = self._now_utc()
-        som = now.replace(month=1, day=0, hour=0, minute=0, second=0, microsecond=0)
+        som = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
         return int(som.timestamp())
 
     # ---------------------------
