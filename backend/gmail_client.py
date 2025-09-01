@@ -27,78 +27,110 @@ class GmailClient:
         'https://www.googleapis.com/auth/gmail.modify',  # For modifying emails (applying labels)
         'https://www.googleapis.com/auth/gmail.settings.basic'  # Required for filter management
     ]
-
-    creds = None
     user_id = 'me'
 
     def __init__(self):
-        self.service = self._get_gmail_service()
-        # In-memory history cursor (None means not initialized yet)
-        self._last_history_id = ""
+        pass
 
-    def _oauth_login(self):
-        # If there are no (valid) credentials available, let the user log in.
-        if not self.creds:
-            log.info("No OAuth tokens found, running OAuth login flow.")
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', self.SCOPES)
-            self.creds = flow.run_local_server(port=8000)
-        elif self.creds.expired and self.creds.refresh_token:
-            log.info("OAuth tokens expired, refreshing.")
-            self.creds.refresh(Request())
-        else:
-            return
+    def get_authorization_url(self):
+        flow = InstalledAppFlow.from_client_secrets_file(
+            'credentials.json',
+            scopes=self.SCOPES,
+            redirect_uri='http://localhost:8080/oauth/callback'
+        )
+        auth_url, _ = flow.authorization_url(prompt='consent', access_type='offline', include_granted_scopes='true')
+        return auth_url
 
-        # Save credentials securely
-        keyring.set_password('gmail_api', 'oauth_tokens', self.creds.to_json())
+    def exchange_code_for_token(self, code):
+        flow = InstalledAppFlow.from_client_secrets_file(
+            'credentials.json',
+            scopes=self.SCOPES,
+            redirect_uri='http://localhost:8080/oauth/callback' # Error 400: (redirect_uri_mismatch) Bad Request
+        )
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        profile = self.get_user_profile_from_creds(creds)
+        # Store tokens in keyring using email as key
+        user_email = profile.get("emailAddress")
+        keyring.set_password('gmail_api', user_email, creds.to_json())
+        return user_email, profile.get("historyId"), creds.token
 
-    def _get_gmail_service(self):
-        """Gets or refreshes Gmail API service."""
-        # Try to get credentials from secure storage
-        log.info("Retrieving OAuth tokens from keyring.")
-        stored_creds = keyring.get_password('gmail_api', 'oauth_tokens')
-        if stored_creds:
-            creds_data = json.loads(stored_creds)
-            self.creds = Credentials.from_authorized_user_info(creds_data, self.SCOPES)
-        else:
-            self._oauth_login()
+    def remove_user(self, email):
+        """
+        Remove user by deleting their OAuth tokens from keyring.
+        """
+        # Retrieve tokens from keyring
+        stored_creds = keyring.get_password('gmail_api', email)
+        if not stored_creds:
+            raise Exception(f"No OAuth tokens found for {email}")
+        creds_data = json.loads(stored_creds)
+        creds = Credentials.from_authorized_user_info(creds_data, self.SCOPES)
 
-        log.info("Initializing Gmail API service.")
-        return build('gmail', 'v1',
-                     credentials=self.creds,
-                     discoveryServiceUrl="https://gmail.googleapis.com/$discovery/rest?version=v1")
+        # Revoke creds
+        log.warning(f"Removing Gmail API tokens for user {email}.")
+        import requests
+        revoke_url = "https://oauth2.googleapis.com/revoke"
+        response = requests.post(revoke_url, params={'token': creds.token})
+        if response.status_code != 200:
+            log.error(f"Failed to revoke token for {email}: {response.text}")
+        keyring.delete_password('gmail_api', email)
+
+    def get_user_profile_from_creds(self, creds):
+        return self._get_user_profile(creds.token)
+
+    def _get_user_profile(self, access_token):
+        # Build a temporary credentials object to get the email
+        creds = Credentials(token=access_token, scopes=self.SCOPES)
+        service = build('gmail', 'v1', credentials=creds)
+        return service.users().getProfile(userId=self.user_id).execute()
+
+    def get_api_client(self, email):
+        # Retrieve tokens from keyring
+        stored_creds = keyring.get_password('gmail_api', email)
+        if not stored_creds:
+            raise Exception(f"No OAuth tokens found for {email}")
+        creds_data = json.loads(stored_creds)
+        creds = Credentials.from_authorized_user_info(creds_data, self.SCOPES)
+        # Refresh if needed
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            # Save refreshed tokens
+            keyring.set_password('gmail_api', email, creds.to_json())
+        return build('gmail', 'v1', credentials=creds, discoveryServiceUrl="https://gmail.googleapis.com/$discovery/rest?version=v1")
 
     # -------------
     ## Labels
     # -------------
 
-    def _list_labels(self):
+    def _list_labels(self, user_email: str) -> list[dict]:
         """Lists all labels in the user's account."""
         log.info("Retrieving labels from Gmail API.")
-        results = self.service.users().labels().list(userId=self.user_id).execute()
+        try:
+            results = self.get_api_client(user_email).users().labels().list(userId=self.user_id).execute()
+        except Exception as e:
+            raise Exception(f"Failed to list labels: {e}")
         log.info(f"Retrieved {len(results.get('labels', []))} labels from Gmail.")
         return results.get('labels', [])
 
-    def list_labels(self):
+    def list_labels(self, user_email: str) -> list[dict]:
         """Lists all labels in the user's account."""
-        self._oauth_login()
-        try:
-            return self._list_labels()
-        except Exception as e:
-            raise Exception(f"Failed to list labels: {e}")
+        return self._list_labels(user_email)
 
-    def create_label(self, name: str):
+    def create_label(self, user_email: str, name: str, text_color: str, bg_color: str) -> dict:
         """Creates a new label."""
-        self._oauth_login()
         try:
             label_object = {
                 'name': name,
                 'messageListVisibility': 'show',
-                'labelListVisibility': 'labelShow'
+                'labelListVisibility': 'labelShow',
+                'color': {
+                    "textColor": text_color,
+                    "backgroundColor": bg_color
+                }
             }
 
             log.info(f"Creating label '{name}' in Gmail API.")
-            created_label = self.service.users().labels().create(
+            created_label = self.get_api_client(user_email).users().labels().create(
                 userId=self.user_id,
                 body=label_object
             ).execute()
@@ -107,12 +139,11 @@ class GmailClient:
         except Exception as e:
             raise Exception(f"Failed to create label: {e}")
 
-    def delete_label(self, label_id: str):
+    def delete_label(self, label_id: str, user_email: str) -> bool:
         """Deletes a label by its ID."""
-        self._oauth_login()
         try:
             log.warning(f"Deleting label '{label_id}' from Gmail API.")
-            self.service.users().labels().delete(
+            self.get_api_client(user_email).users().labels().delete(
                 userId=self.user_id,
                 id=label_id
             ).execute()
@@ -124,7 +155,7 @@ class GmailClient:
     ## Filters
     # --------------
 
-    def create_filter(self, criteria: dict, actions: dict):
+    def create_filter(self, criteria: dict, actions: dict, user_email: str) -> dict:
         """
         Create a Gmail filter
 
@@ -143,7 +174,6 @@ class GmailClient:
                     'forward': 'forward@example.com'
                 }
         """
-        self._oauth_login()
         try:
             filter_object = {
                 'criteria': criteria,
@@ -151,7 +181,7 @@ class GmailClient:
             }
 
             log.info(f"Creating filter in Gmail API.")
-            result = self.service.users().settings().filters().create(
+            result = self.get_api_client(user_email).users().settings().filters().create(
                 userId=self.user_id,
                 body=filter_object
             ).execute()
@@ -159,12 +189,11 @@ class GmailClient:
         except Exception as e:
             raise Exception(f"Failed to create filter: {str(e)}")
 
-    def list_filters(self):
+    def list_filters(self, user_email: str) -> list[dict]:
         """List all filters in the Gmail account."""
-        self._oauth_login()
         try:
             log.info(f"Listing filters in Gmail API.")
-            results = self.service.users().settings().filters().list(
+            results = self.get_api_client(user_email).users().settings().filters().list(
                 userId=self.user_id
             ).execute()
             log.info(f"Retrieved {len(results.get('filter', []))} filters from Gmail.")
@@ -172,12 +201,11 @@ class GmailClient:
         except Exception as e:
             raise Exception(f"Failed to list filters: {str(e)}")
 
-    def delete_filter(self, filter_id: str):
+    def delete_filter(self, filter_id: str, user_email: str) -> bool:
         """Delete a specific filter by ID."""
-        self._oauth_login()
         try:
             log.warning(f"Deleting filter '{filter_id}' from Gmail API.")
-            self.service.users().settings().filters().delete(
+            self.get_api_client(user_email).users().settings().filters().delete(
                 userId=self.user_id,
                 id=filter_id
             ).execute()
@@ -189,30 +217,35 @@ class GmailClient:
     ## Message Stats
     # ------------------
 
-    def get_unread_count(self) -> int:
+    def get_unread_count(self, user_email: str) -> int:
         """
         Return the number of unread messages using the UNREAD system label.
         Leverages labels.get to read messagesUnread for the UNREAD label.
         """
-        self._oauth_login()
-        try:
-            all_labels = self._list_labels()
-            unread_label_id = [lid for lid in all_labels if lid['id'] == 'UNREAD'][0]
+        
+        all_labels = self._list_labels(user_email)
+        unread_label_id = [lid for lid in all_labels if lid['id'] == 'UNREAD'][0]
 
+        try:
             log.info(f"Retrieving unread count from Gmail API.")
-            label = self.service.users().labels().get(userId=self.user_id, id=unread_label_id).execute()
+            label = self.get_api_client(user_email).users().labels().get(
+                userId=self.user_id,
+                id=unread_label_id['id']
+            ).execute()
             return int(label.get('messagesUnread', 0))
         except Exception as e:
+            if e.status_code == 404:
+                log.warning(f"Zero UNREAD messages found for user {user_email}.")
+                return 0
             raise Exception(f"Failed to retrieve unread count from Gmail: {e}")
 
-    def get_total_count(self) -> int:
+    def get_total_count(self, user_email: str) -> int:
         """
         Return the total number of messages using the user profile endpoint.
         """
-        self._oauth_login()
         try:
             log.info(f"Retrieving total message count from Gmail API.")
-            profile = self.service.users().getProfile(userId=self.user_id).execute()
+            profile = self.get_api_client(user_email).users().getProfile(userId=self.user_id).execute()
             return int(profile.get('messagesTotal', 0))
         except Exception as e:
             raise Exception(f"Failed to retrieve total message count from Gmail: {e}")
@@ -221,7 +254,7 @@ class GmailClient:
     ## Gmail History
     # ---------------
 
-    def list_history(self, history_types: list[str] = None) -> list[dict]:
+    def list_history(self, user_email: str, history_id: str, history_types: list[str] = None) -> tuple[str, list[dict]]:
         """
         Returns up to 500 history records since the last stored history id.
         - Keeps the latest history id in-memory (self._last_history_id).
@@ -235,26 +268,14 @@ class GmailClient:
         Returns:
             List of history record dicts.
         """
-        if not history_types:
+        if history_types is None:
             history_types = []
-        self._oauth_login()
-
-        # Initialize the starting history id if not set; no backfill on first call
-        if not self._last_history_id:
-            try:
-                log.info("Initializing Gmail history cursor.")
-                profile = self.service.users().getProfile(userId=self.user_id).execute()
-                self._last_history_id = profile.get("historyId")
-            except Exception as e:
-                raise Exception(f"Failed to initialize Gmail history cursor: {e}")
-            log.warning(f"Initializing Gmail history cursor to {self._last_history_id}.")
-            return []
 
         try:
-            log.info(f"Retrieving Gmail history since {self._last_history_id} from Gmail API.")
-            resp = self.service.users().history().list(
+            log.info(f"Retrieving Gmail history since {history_id} from Gmail API.")
+            resp = self.get_api_client(user_email).users().history().list(
                 userId=self.user_id,
-                startHistoryId=self._last_history_id,
+                startHistoryId=history_id,
                 historyTypes=history_types,
                 maxResults=500,
             ).execute()
@@ -263,7 +284,7 @@ class GmailClient:
 
         # Update the in-memory cursor to the newest history id we can infer
         # Top-level historyId (point to last history included in the response)
-        self._last_history_id = resp.get("historyId")
-        log.info(f"Updated Gmail history cursor to {self._last_history_id}.")
+        updated_history_id = resp.get("historyId")
+        log.info(f"Updated Gmail history cursor to {updated_history_id}.")
 
-        return resp.get("history", [])
+        return updated_history_id, resp.get("history", [])

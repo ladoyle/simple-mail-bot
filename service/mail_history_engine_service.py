@@ -33,11 +33,11 @@ def get_history_engine_service(
 class HistoryEngine:
     """
     History Engine:
-    - At 4:00 AM (UTC) every day, aggregates Gmail history changes since the last run.
-    - Builds a mapping from EmailRule labelIds to rule_id.
-    - Uses Gmail client (which maintains history state) to pull history and count
-      messages that had those labels added/removed.
-    - Persists a row in EmailStatistic with (timestamp, processed, rule_id, rule_name).
+    - At 4:00 AM (UTC) every day, aggregates Gmail history changes for all authorized users.
+    - For each user, builds a mapping from EmailRule labelIds to rule_id.
+    - Uses Gmail client to pull history and count messages that had those labels added/removed.
+    - Persists a row in EmailStatistic with (timestamp, processed, rule_id, rule_name, email_address).
+    - Updates each user's last_history_id after processing.
     """
 
     def __init__(self, db_session: Session, gmail_client: GmailClient):
@@ -83,7 +83,6 @@ class HistoryEngine:
                 await asyncio.sleep(sleep_seconds)
                 await self.run_once()
         except asyncio.CancelledError:
-            # graceful stop
             return
 
     @staticmethod
@@ -100,83 +99,87 @@ class HistoryEngine:
 
     async def run_once(self) -> None:
         """
-        Performs a single aggregation cycle:
+        Performs an aggregation cycle for each user in db:
         - Load rules and build labelId -> rule_id mapping.
-        - Fetch Gmail history via gmail_client.list_history (client maintains state).
+        - Fetch Gmail history via gmail_client.list_history.
         - For each history entry, count messages whose label changes match a rule's labels.
           Each message is counted at most once per rule for this run.
         - Insert EmailStatistic totals with current timestamp.
         """
         log.info(f"Loading mail history stats at {datetime.now(timezone.utc)}")
-        # 1) Load rules
-        rules = self.db.execute(select(EmailRule)).scalars().all()
-        if not rules:
+
+        # Query all authorized users
+        users = self.db.execute(select(database.AuthorizedUsers)).scalars().all()
+        if not users:
             return
 
-        # 2) Build mapping: labelId -> set(rule_id)
-        label_to_rule_ids, rule_names = self._build_label_to_rule_ids(list(rules))
-
-        # 3) Get history entries from the client (it maintains startHistoryId internally)
-        try:
-            histories: List[dict] = self.gmail_client.list_history(history_types=["labelAdded", "labelRemoved"])
-        except Exception as e:
-            raise RuntimeError(f"Failed to fetch Gmail history: {e}")
-
-        # 4) For each rule, track unique message ids processed in this run
-        rule_to_message_ids: Dict[int, Set[str]] = {r.id: set() for r in rules}
-
-        # 5) Accumulate based on labelsAdded / labelsRemoved
-        for history in histories:
-            # labelsAdded: [{ "message": { "id": ... }, "labelIds": [...] }, ...]
-            for added in history.get("labelsAdded", []):
-                msg = (added.get("message") or {})
-                mid = msg.get("id")
-                if not mid:
-                    continue
-                label_ids = added.get("labelIds") or []
-                self._collect_for_event(rule_to_message_ids, label_to_rule_ids, label_ids, mid)
-
-            # labelsRemoved: same structure
-            for removed in history.get("labelsRemoved", []):
-                msg = (removed.get("message") or {})
-                mid = msg.get("id")
-                if not mid:
-                    continue
-                label_ids = removed.get("labelIds") or []
-                self._collect_for_event(rule_to_message_ids, label_to_rule_ids, label_ids, mid)
-
-        # 6) Persist totals with current timestamp (count unique messages per rule)
-        ts = int(datetime.now(timezone.utc).timestamp())
         stats_to_add: List[EmailStatistic] = []
-        for r in rules:
-            processed = len(rule_to_message_ids.get(r.id, set()))
-            stats_to_add.append(
-                EmailStatistic(
-                    timestamp=ts,
-                    processed=processed,
-                    rule_id=r.id,
-                    rule_name=rule_names.get(r.id, r.name or ""),
+
+        for user in users:
+            user_email = user.email
+            last_history_id = user.last_history_id
+
+            # Fetch rules for this user only
+            rules = self.db.execute(
+                select(EmailRule).where(EmailRule.email_address == user_email)
+            ).scalars().all()
+            if not rules:
+                continue
+
+            label_to_rule_ids, rule_names = self._build_label_to_rule_ids(list(rules))
+
+            try:
+                updated_history_id, histories = self.gmail_client.list_history(
+                    user_email=user_email,
+                    history_id=last_history_id,
+                    history_types=["labelAdded", "labelRemoved"]
                 )
-            )
+            except Exception as e:
+                log.error(f"Failed to fetch Gmail history for {user_email}: {e}")
+                continue
+
+            rule_to_message_ids: Dict[int, Set[str]] = {r.id: set() for r in rules}
+
+            for history in histories:
+                for added in history.get("labelsAdded", []):
+                    msg = (added.get("message") or {})
+                    mid = msg.get("id")
+                    if not mid:
+                        continue
+                    label_ids = added.get("labelIds") or []
+                    self._collect_for_event(rule_to_message_ids, label_to_rule_ids, label_ids, mid)
+                for removed in history.get("labelsRemoved", []):
+                    msg = (removed.get("message") or {})
+                    mid = msg.get("id")
+                    if not mid:
+                        continue
+                    label_ids = removed.get("labelIds") or []
+                    self._collect_for_event(rule_to_message_ids, label_to_rule_ids, label_ids, mid)
+
+            ts = int(datetime.now(timezone.utc).timestamp())
+            for rid, mids in rule_to_message_ids.items():
+                processed = len(mids)
+                stats_to_add.append(
+                    EmailStatistic(
+                        timestamp=ts,
+                        processed=processed,
+                        rule_id=rid,
+                        rule_name=rule_names.get(rid, ""),
+                        email_address=user_email,
+                    )
+                )
+
+            user.last_history_id = updated_history_id
+            self.db.commit()
 
         if stats_to_add:
             self.db.add_all(stats_to_add)
             self.db.commit()
 
-        # The gmail_client is expected to update its stored history id internally.
-
-    # ---------------------------
-    # Mapping and accumulation
-    # ---------------------------
-
     @staticmethod
     def _build_label_to_rule_ids(
             rules: List[EmailRule],
     ) -> tuple[Dict[str, Set[int]], Dict[int, str]]:
-        """
-        Build a single mapping of labelId -> set(rule_id) combining both addLabelIds and removeLabelIds.
-        Also returns a map of rule_id -> rule_name for storage.
-        """
         label_to_rule_ids: Dict[str, Set[int]] = {}
         rule_names: Dict[int, str] = {}
 
@@ -196,10 +199,6 @@ class HistoryEngine:
             label_ids: List[str],
             message_id: str,
     ) -> None:
-        """
-        For the given message and its associated label_ids, mark the message as processed
-        for every rule that references any of those label ids. Deduplicates per rule.
-        """
         for lid in label_ids:
             for rid in label_to_rule_ids.get(lid, set()):
                 rule_to_message_ids.setdefault(rid, set()).add(message_id)
