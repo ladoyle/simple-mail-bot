@@ -13,7 +13,10 @@ def get_total_processed(
         mail_stats_service: MailStatsService = Depends(get_stats_service)
 ):
     log.info(f"Getting total processed for rule={ruleId}")
-    return {"processed": mail_stats_service.get_total_processed(user_email, ruleId)}
+    return {
+        "message": f"Total processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_total_processed(user_email, ruleId)
+        }
 
 @stats_router.get("/daily-processed")
 def get_daily_processed(
@@ -22,7 +25,10 @@ def get_daily_processed(
         mail_stats_service: MailStatsService = Depends(get_stats_service)
 ):
     log.info(f"Getting daily processed for rule={ruleId}")
-    return {"processed": mail_stats_service.get_daily_processed(user_email, ruleId)}
+    return {
+        "message": f"Daily processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_daily_processed(user_email, ruleId)
+        }
 
 @stats_router.get("/weekly-processed")
 def get_weekly_processed(
@@ -31,7 +37,10 @@ def get_weekly_processed(
         mail_stats_service: MailStatsService = Depends(get_stats_service)
 ):
     log.info(f"Getting weekly processed for rule={ruleId}")
-    return {"processed": mail_stats_service.get_weekly_processed(user_email, ruleId)}
+    return {
+        "message": f"Weekly processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_weekly_processed(user_email, ruleId)
+        }
 
 @stats_router.get("/monthly-processed")
 def get_monthly_processed(
@@ -40,7 +49,10 @@ def get_monthly_processed(
         mail_stats_service: MailStatsService = Depends(get_stats_service)
 ):
     log.info(f"Getting monthly processed for rule={ruleId}")
-    return {"processed": mail_stats_service.get_monthly_processed(user_email, ruleId)}
+    return {
+        "message": f"Monthly processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_monthly_processed(user_email, ruleId)
+        }
 
 @stats_router.get("/unread")
 def get_unread(
@@ -50,7 +62,7 @@ def get_unread(
     log.info(f"Getting unread count from gmail")
     return {
         "message": f"Unread message count for {user_email}",
-        "unread": mail_stats_service.get_unread_count(user_email)
+        "numEmails": mail_stats_service.get_unread_count(user_email)
     }
 
 @stats_router.get("/read")
@@ -61,5 +73,5 @@ def get_read(
     log.info(f"Getting read count from gmail")
     return {
         "message": f"Read message count for {user_email}",
-        "read": mail_stats_service.get_read_count(user_email)
+        "numEmails": mail_stats_service.get_read_count(user_email)
     }

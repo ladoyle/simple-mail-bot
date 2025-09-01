@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -11,10 +9,10 @@ class LabelRequest(BaseModel):
 
 class LabelResponse(BaseModel):
     id: int
-    gmail_id: str = Field(..., alias="gmailId")
+    gmail_id: str
     name: str
-    text_color: str = Field(..., alias="textColor")
-    background_color: str = Field(..., alias="backgroundColor")
+    text_color: str 
+    background_color: str
 
     class Config:
         from_attributes = True
@@ -30,7 +28,7 @@ class RuleRequest(BaseModel):
 
 class RuleResponse(BaseModel):
     id: int
-    gmail_id: str = Field(..., alias="gmailId")
+    gmail_id: str 
     name: str
     criteria: str
     addLabelIds: list[str]

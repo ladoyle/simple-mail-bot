@@ -30,8 +30,7 @@ class GmailClient:
     user_id = 'me'
 
     def __init__(self):
-        self.api_client = None
-        # In-memory history cursor (None means not initialized yet)
+        pass
 
     def get_authorization_url(self):
         flow = InstalledAppFlow.from_client_secrets_file(
@@ -46,7 +45,7 @@ class GmailClient:
         flow = InstalledAppFlow.from_client_secrets_file(
             'credentials.json',
             scopes=self.SCOPES,
-            # redirect_uri='http://localhost:8080' - Error 400: (redirect_uri_mismatch) Bad Request
+            redirect_uri='http://localhost:8080/oauth/callback' # Error 400: (redirect_uri_mismatch) Bad Request
         )
         flow.fetch_token(code=code)
         creds = flow.credentials
@@ -106,16 +105,16 @@ class GmailClient:
     def _list_labels(self, user_email: str) -> list[dict]:
         """Lists all labels in the user's account."""
         log.info("Retrieving labels from Gmail API.")
-        results = self.get_api_client(user_email).users().labels().list(userId=self.user_id).execute()
+        try:
+            results = self.get_api_client(user_email).users().labels().list(userId=self.user_id).execute()
+        except Exception as e:
+            raise Exception(f"Failed to list labels: {e}")
         log.info(f"Retrieved {len(results.get('labels', []))} labels from Gmail.")
         return results.get('labels', [])
 
     def list_labels(self, user_email: str) -> list[dict]:
         """Lists all labels in the user's account."""
-        try:
-            return self._list_labels(user_email)
-        except Exception as e:
-            raise Exception(f"Failed to list labels: {e}")
+        return self._list_labels(user_email)
 
     def create_label(self, user_email: str, name: str, text_color: str, bg_color: str) -> dict:
         """Creates a new label."""
@@ -223,17 +222,21 @@ class GmailClient:
         Return the number of unread messages using the UNREAD system label.
         Leverages labels.get to read messagesUnread for the UNREAD label.
         """
-        try:
-            all_labels = self._list_labels(user_email)
-            unread_label_id = [lid for lid in all_labels if lid['id'] == 'UNREAD'][0]
+        
+        all_labels = self._list_labels(user_email)
+        unread_label_id = [lid for lid in all_labels if lid['id'] == 'UNREAD'][0]
 
+        try:
             log.info(f"Retrieving unread count from Gmail API.")
             label = self.get_api_client(user_email).users().labels().get(
                 userId=self.user_id,
-                id=unread_label_id
+                id=unread_label_id['id']
             ).execute()
             return int(label.get('messagesUnread', 0))
         except Exception as e:
+            if e.status_code == 404:
+                log.warning(f"Zero UNREAD messages found for user {user_email}.")
+                return 0
             raise Exception(f"Failed to retrieve unread count from Gmail: {e}")
 
     def get_total_count(self, user_email: str) -> int:

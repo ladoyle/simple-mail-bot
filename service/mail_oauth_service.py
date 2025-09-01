@@ -45,7 +45,7 @@ class MailOAuthService:
         return user_email, access_token
 
     def remove_user(self, email):
-        user: Optional[AuthorizedUsers, None] = self.db.get(AuthorizedUsers, email)
+        user: Optional[AuthorizedUsers] = self.db.get(AuthorizedUsers, email)
         if not user:
             return False
 

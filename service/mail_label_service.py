@@ -90,7 +90,7 @@ class MailLabelService:
         return label
 
     def delete_label(self, user_email: str, label_id: int):
-        label: Optional[EmailLabel, None] = self.db.get(EmailLabel, label_id)
+        label: Optional[EmailLabel] = self.db.get(EmailLabel, label_id)
         if not label:
             return False
 
