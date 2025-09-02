@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
+from oauthlib.oauth1.rfc5849.endpoints import access_token
 
 from service.mail_oauth_service import get_oauth_service, MailOAuthService
 
@@ -13,14 +14,23 @@ def callback(code: str, oauth_service: MailOAuthService = Depends(get_oauth_serv
     if not code:
         raise HTTPException(status_code=400, detail="Missing code")
     user_email, access_token = oauth_service.handle_callback(code)
-    return {"email": user_email, "token": access_token}
+    return {
+        "message": f'User {user_email} successfully logged in',
+        "email": user_email,
+        "token": access_token,
+        "status": 'success'
+    }
 
 @oauth_router.post("/logout")
-def logout(userEmail: str, oauth_service: MailOAuthService = Depends(get_oauth_service)):
+def logout(
+        userEmail: str,
+        access_token: str = Header(..., alias="Authorization"),
+        oauth_service: MailOAuthService = Depends(get_oauth_service)
+):
     if not userEmail:
         raise HTTPException(status_code=400, detail="No email provided")
 
-    removed = oauth_service.remove_user(userEmail)
+    removed = oauth_service.remove_user(userEmail, access_token)
     if not removed:
         raise HTTPException(status_code=404, detail=f"User not found, {userEmail}")
     return {"message": f'Successfully logged out user {userEmail}', "status": 'success'}

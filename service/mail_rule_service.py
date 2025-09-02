@@ -65,7 +65,7 @@ class MailRuleService:
     # Public API used by controller
     # ---------------------------
 
-    def create_rule(self, user_email: str, req: RuleRequest) -> EmailRule:
+    def create_rule(self, user_email: str, access_token: str, req: RuleRequest) -> EmailRule:
         """
         Create a rule in Gmail, then upsert to DB. Returns DB rule id.
         """
@@ -79,7 +79,8 @@ class MailRuleService:
                     'removeLabelIds': req.removeLabelIds,
                     'forward': req.forward
                 },
-                user_email=user_email
+                user_email=user_email,
+                access_token=access_token
             )
         except Exception as e:
             raise RuntimeError(f"Failed to create rule in Gmail: {e}")
@@ -97,7 +98,7 @@ class MailRuleService:
         self.db.refresh(db_rule)
         return db_rule
 
-    def delete_rule(self, user_email: str, rule_id: int) -> bool:
+    def delete_rule(self, user_email: str, access_token: str, rule_id: int) -> bool:
         """
         Delete a rule: remove from Gmail first, then from DB. Returns True if deleted, False if not found.
         """
@@ -109,7 +110,8 @@ class MailRuleService:
             # Delete from Gmail first (source of truth)
             self.gmail_client.delete_filter(
                 filter_id=db_rule.gmail_id,
-                user_email=user_email
+                user_email=user_email,
+                access_token=access_token
             )
         except Exception as e:
             raise RuntimeError(f"Failed to delete rule from Gmail: {e}")
@@ -119,13 +121,13 @@ class MailRuleService:
 
         return True
 
-    def list_rules(self, user_email: str) -> List[EmailRule]:
+    def list_rules(self, user_email: str, access_token: str) -> List[EmailRule]:
         """
         List rules by syncing from Gmail first (Gmail is the gold standard)
         and returning the DB rows.
         """
         try:
-            gmail_rules = self.gmail_client.list_filters(user_email)
+            gmail_rules = self.gmail_client.list_filters(user_email, access_token)
             # map by rule_name (assumed unique)
             gmail_map = {r["id"]: r for r in gmail_rules}
             log.info(f"Fetched {len(gmail_map)} rules from Gmail")

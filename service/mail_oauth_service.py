@@ -44,14 +44,13 @@ class MailOAuthService:
         self._add_user(user_email, history_id)
         return user_email, access_token
 
-    def remove_user(self, email):
-        user: Optional[AuthorizedUsers] = self.db.get(AuthorizedUsers, email)
+    def remove_user(self, email: str, access_token: str) -> bool:
+        user: Optional[AuthorizedUsers] = self.db.get(AuthorizedUsers, ident=email)
         if not user:
             return False
-
         try:
             # Delete token from Gmail Client
-            self.gmail_client.remove_user(email)
+            self.gmail_client.remove_user(email, access_token)
         except Exception as e:
             raise RuntimeError(f"Failed to delete token from Gmail: {e}")
 
