@@ -53,7 +53,7 @@ class EmailLabel(Base):
 
 class AuthorizedUsers(Base):
     __tablename__ = "authorized_users"
-    id = Column(Integer, index=True)
+    id = Column(Integer, default=0, index=True)
     email = Column(String, primary_key=True, default="")
     last_history_id = Column(String, default="")
 

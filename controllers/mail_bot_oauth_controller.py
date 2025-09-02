@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
-from oauthlib.oauth1.rfc5849.endpoints import access_token
 
 from service.mail_oauth_service import get_oauth_service, MailOAuthService
 
