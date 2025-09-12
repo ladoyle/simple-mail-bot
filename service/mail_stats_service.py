@@ -39,23 +39,27 @@ class MailStatsService:
     # Processed counters (DB-based)
     # ---------------------------
 
-    def get_total_processed(self, user_email: str, rule_id: int) -> int:
+    def get_total_processed(self, user_email: str, access_token: str, rule_id: int) -> int:
+        self.gmail_client.validate_gmail_access(user_email, access_token)
         return self._sum_processed(email_address=user_email, rule_id=rule_id)
 
-    def get_daily_processed(self, user_email: str, rule_id: int) -> int:
+    def get_daily_processed(self, user_email: str, access_token: str, rule_id: int) -> int:
         """
         Sum processed for the last 24 hours (rolling window).
         """
         now_ts = self._now_utc_timestamp()
         start_ts = now_ts - 24 * 60 * 60
+        self.gmail_client.validate_gmail_access(user_email, access_token)
         return self._sum_processed(email_address=user_email, rule_id=rule_id, start_ts=start_ts, end_ts=now_ts)
 
-    def get_weekly_processed(self, user_email: str, rule_id: int) -> int:
+    def get_weekly_processed(self, user_email: str, access_token: str, rule_id: int) -> int:
         start_ts = self._start_of_week_utc_timestamp()
+        self.gmail_client.validate_gmail_access(user_email, access_token)
         return self._sum_processed(email_address=user_email, rule_id=rule_id, start_ts=start_ts)
 
-    def get_monthly_processed(self, user_email: str, rule_id: int) -> int:
+    def get_monthly_processed(self, user_email: str, access_token: str, rule_id: int) -> int:
         start_ts = self._start_of_month_utc_timestamp()
+        self.gmail_client.validate_gmail_access(user_email, access_token)
         return self._sum_processed(email_address=user_email, rule_id=rule_id, start_ts=start_ts)
 
     def _sum_processed(self, email_address: str, rule_id: int, start_ts: Optional[int] = None, end_ts: Optional[int] = None) -> int:
@@ -102,22 +106,22 @@ class MailStatsService:
     # Read/Unread counters (Gmail-based)
     # ---------------------------
 
-    def get_unread_count(self, user_email: str) -> int:
+    def get_unread_count(self, user_email: str, access_token: str) -> int:
         """
         Retrieve unread count directly from Gmail via the client.
         """
         try:
-            return self.gmail_client.get_unread_count(user_email)
+            return self.gmail_client.get_unread_count(user_email, access_token)
         except Exception as e:
             raise RuntimeError(f"Failed to retrieve unread emails count: {e}")
 
-    def get_read_count(self, user_email) -> int:
+    def get_read_count(self, user_email: str, access_token: str) -> int:
         """
         Retrieve read count as total - unread, both from the Gmail client.
         """
         try:
-            total = self.gmail_client.get_total_count(user_email)
-            unread = self.gmail_client.get_unread_count(user_email)
+            total = self.gmail_client.get_total_count(user_email, access_token)
+            unread = self.gmail_client.get_unread_count(user_email, access_token)
             read = total - unread
             return read if read >= 0 else 0
         except Exception as e:

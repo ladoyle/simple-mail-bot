@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from controllers import mail_bot_oauth_controller as oauth_ctrl
 from controllers import mail_bot_label_controller as label_ctrl
@@ -31,6 +32,19 @@ app.include_router(label_ctrl.label_router)
 app.include_router(rule_ctrl.rule_router)
 app.include_router(stats_ctrl.stats_router)
 
+origins = [
+    "http://localhost:5000",  # Example frontend URL
+    "https://your-frontend-domain.com",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=False,  # Disallow cookies and authorization headers
+    allow_methods=["*"],     # Allow all HTTP methods (GET, POST, PUT, etc.)
+    allow_headers=["*"],     # Allow all headers
+)
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,4 +57,4 @@ if __name__ == "__main__":
     from util.util import print_startup_banner
 
     print_startup_banner()
-    uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)
+    uvicorn.run("main:app", host="127.0.0.1", port=5000, reload=True)

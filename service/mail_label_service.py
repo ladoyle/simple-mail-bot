@@ -46,10 +46,10 @@ class MailLabelService:
             self.db.delete(label)
         self.db.commit()
 
-    def list_labels(self, user_email: str) -> list[EmailLabel]:
+    def list_labels(self, user_email: str, access_token: str) -> list[EmailLabel]:
         try:
             # Get from Gmail (golden source)
-            gmail_labels = self.gmail_client.list_labels(user_email)
+            gmail_labels = self.gmail_client.list_labels(user_email, access_token)
             gmail_label_map = {lbl['id']: lbl for lbl in gmail_labels}
             log.info(f"Fetched {len(gmail_label_map)} labels from Gmail")
         except Exception as e:
@@ -71,10 +71,10 @@ class MailLabelService:
         # Return synced labels from db
         return list(self.db.execute(select(EmailLabel).order_by(EmailLabel.name)).scalars().all())
 
-    def create_label(self, user_email: str, req: LabelRequest):
+    def create_label(self, user_email: str, access_token: str, req: LabelRequest):
         try:
             # Create label in Gmail (golden source)
-            gmail_label = self.gmail_client.create_label(user_email, req.label, req.text_color, req.background_color)
+            gmail_label = self.gmail_client.create_label(user_email, access_token, req.label, req.text_color, req.background_color)
         except Exception as e:
             raise RuntimeError(f"Failed to create label in Gmail: {e}")
 
@@ -89,14 +89,14 @@ class MailLabelService:
         self.db.refresh(label)
         return label
 
-    def delete_label(self, user_email: str, label_id: int):
+    def delete_label(self, user_email: str, access_token: str, label_id: int):
         label: Optional[EmailLabel] = self.db.get(EmailLabel, label_id)
         if not label:
             return False
 
         try:
             # Delete from Gmail
-            self.gmail_client.delete_label(user_email, label.gmail_id)
+            self.gmail_client.delete_label(user_email, label.gmail_id, access_token)
         except Exception as e:
             raise RuntimeError(f"Failed to delete label from Gmail: {e}")
 

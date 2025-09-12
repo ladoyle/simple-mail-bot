@@ -21,8 +21,9 @@ def get_db():
 
 class EmailStatistic(Base):
     __tablename__ = "email_statistics"
+    id = Column(Integer, primary_key=True, index=True)
     email_address = Column(String, primary_key=True)
-    timestamp = Column(Integer, default=0, primary_key=True)
+    timestamp = Column(Integer, default=0)
     processed = Column(Integer, default=0)
     rule_id = Column(Integer, nullable=False)
     rule_name = Column(String, nullable=False)
@@ -52,8 +53,8 @@ class EmailLabel(Base):
 
 class AuthorizedUsers(Base):
     __tablename__ = "authorized_users"
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, default="")
+    id = Column(Integer, default=0, index=True)
+    email = Column(String, primary_key=True, default="")
     last_history_id = Column(String, default="")
 
 
