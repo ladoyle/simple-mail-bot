@@ -4,7 +4,7 @@ from fastapi.params import Depends
 
 from service.mail_stats_service import MailStatsService, get_stats_service
 
-stats_router = APIRouter(prefix="/stats")
+stats_router = APIRouter(prefix="/v1/stats")
 
 @stats_router.get("/total-processed")
 def get_total_processed(

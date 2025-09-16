@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Header
 from models.mail_bot_schemas import RuleRequest, RuleResponse
 from service.mail_rule_service import get_rule_service, MailRuleService
 
-rule_router = APIRouter(prefix="/rules")
+rule_router = APIRouter(prefix="/v1/rules")
 
 
 @rule_router.get("/list", response_model=List[RuleResponse])

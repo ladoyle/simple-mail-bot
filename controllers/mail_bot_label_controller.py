@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from models.mail_bot_schemas import LabelRequest, LabelResponse
 from service.mail_label_service import get_label_service, MailLabelService
 
-label_router = APIRouter(prefix="/labels")
+label_router = APIRouter(prefix="/v1/labels")
 
 
 @label_router.get("/list", response_model=List[LabelResponse])

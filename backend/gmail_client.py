@@ -4,8 +4,9 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 import keyring
 import json
-import os
 import logging as log
+
+from util.config import settings
 
 gmail_client = None
 
@@ -32,14 +33,14 @@ class GmailClient:
     ]
 
     # Get redirect_uri based on the environment
-    redirect_uri = 'https://my-frontend-domain.com/'\
-        if 'MAIL_BOT_TO_GMAIL' in os.environ else 'http://localhost:5000/oauth/callback'
+    redirect_uri = settings.GMAIL_REDIRECT_URI
 
     def __init__(self):
         pass
 
     def get_authorization_url(self):
         flow = InstalledAppFlow.from_client_secrets_file(
+            # TODO : credentials need to be configured for prod
             'credentials.json',
             scopes=self.SCOPES,
             redirect_uri=self.redirect_uri

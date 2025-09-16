@@ -1,16 +1,24 @@
-# TechNoise Mail Bot — README
+# My Email Rules Server — README
 
-This project automates Gmail label/rule management and collects processing statistics, exposed via a FastAPI service.
+This project automates Gmail label/filter management and collects processing statistics, exposed via a FastAPI service.
 
-Contents
-- Architecture and layers
-- FastAPI usage
-- Gmail API notes
-- REST API reference (controllers)
-- Local setup and run
-- Background History Engine
-- Data model (quick reference)
+## Summary
 
+A Python FastAPI application for managing Gmail filters and labels with background aggregation of email processing statistics.  
+It uses SQLAlchemy for persistence, Google API for Gmail integration, and supports daily background jobs for statistics.
+
+## Key features
+
+Primary feature of the My Email Rules Server is the History Engine, which runs daily to aggregate email processing statistics based on Gmail label changes.
+
+The History Engine is a background service that automatically aggregates activity for all authorized users every day at 04:00 UTC. Its main purpose is to track how many emails matched each rule (filter) by analyzing Gmail's history of label changes. For each user, it:
+Loads all EmailRule entries and builds a mapping from Gmail label IDs to rule IDs.
+Uses the Gmail API to fetch incremental history events (label additions/removals) since the last processed point, ensuring no duplicate processing.
+For each rule, counts unique messages that had relevant label changes, so each message is only counted once per rule per run.
+Persists a summary record in the EmailStatistic table, including the timestamp, processed count, rule ID, rule name, and user email.
+Updates the user's last_history_id to mark progress and avoid reprocessing the same events.
+
+This engine enables automated, reliable statistics collection on rule activity, supporting analytics and monitoring for Gmail automation workflows.
 
 ## Architecture and layers
 
@@ -20,43 +28,29 @@ The codebase follows a clear layering pattern:
     - Define REST endpoints with FastAPI routers.
     - Validate I/O via Pydantic models (request/response schemas).
     - Delegate business logic to services.
-    - Examples: rule, label, and stats controllers.
 
 - Services (business logic)
     - Encapsulate domain workflows such as creating rules/labels in Gmail and syncing to the local DB, computing statistics, and aggregating Gmail history.
-    - Examples:
-        - MailRuleService: CRUD and sync of Gmail filters with the EmailRule table.
-        - MailLabelService: CRUD and sync of Gmail labels with the EmailLabel table.
-        - MailStatsService: DB-based processed counts; Gmail-based read/unread counts.
-        - HistoryEngine: background aggregator that reads Gmail history daily, maps events to rules, and writes EmailStatistic records.
 
 - Backend database and client (infrastructure)
-    - Database:
-        - SQLAlchemy ORM, SQLite by default (sqlite:///.../mail_bot.db).
-        - Models include EmailRule, EmailLabel, EmailStatistic.
-    - Gmail client:
-        - A thin wrapper over googleapiclient that manages OAuth, Gmail service initialization, and helper calls for labels, filters, counts, and history.
-        - Maintains a local in-memory history cursor for incremental history retrieval.
-
+    - Database: SQLAlchemy ORM, SQLite by default.
+    - Gmail client: Wrapper over googleapiclient for OAuth and Gmail operations.
 
 ## FastAPI usage
 
 - Dependency Injection (DI):
     - Uses FastAPI Depends to inject shared resources (database session and GmailClient) into services and controller endpoints.
-    - Each service exposes a get_*_service(...) provider that creates or returns a singleton service wired with the current Session and GmailClient.
 
 - Lifespan / startup:
-    - The background HistoryEngine can be initialized once at app startup using FastAPI’s lifespan context or startup event, then stopped on shutdown.
-    - The scheduler runs an async loop that sleeps until the next 4:00 AM UTC and performs daily aggregation.
+    - The background HistoryEngine is initialized at app startup and stopped on shutdown.
 
 - Pydantic models:
     - Request/response models define the schema of inputs/outputs.
-    - For ORM responses, Pydantic is configured with from_attributes = True, allowing direct serialization of ORM objects returned by services.
+    - ORM responses are serialized directly using `from_attributes = True`.
 
 Example app entry (lifespan):
 
 ```python
-# Python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from backend import database
@@ -77,151 +71,95 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 ```
 
-
-
 ## Gmail API notes
 
 - OAuth and scopes:
-    - The app uses InstalledAppFlow and stores tokens securely via keyring.
-    - Scopes used:
+    - Uses InstalledAppFlow and stores tokens securely via keyring.
+    - Scopes:
         - https://www.googleapis.com/auth/gmail.labels
         - https://www.googleapis.com/auth/gmail.modify
         - https://www.googleapis.com/auth/gmail.settings.basic
 
 - Key features used:
-    - Labels API: list/get/create/delete system and custom labels.
-    - Filters (rules) API: create/list/delete filters (rules that apply actions based on criteria).
-    - Users profile: read messagesTotal (used for read count computation).
-    - History API: incremental changes since a historyId (labelAdded/labelRemoved events) for daily aggregation.
+    - Labels API, Filters (rules) API, Users profile, History API.
 
 - History handling:
-    - The Gmail client retains an in-memory history cursor.
-    - First call initializes the cursor using users.getProfile().historyId and returns no data (no backfill).
-    - Subsequent calls return a bounded set of changes (assumed <= 500 per day), and the cursor advances.
-
-
-## REST API reference (controllers)
-
-Base path: / (service root)
-
-- Rules controller (/rules)
-    - GET /rules
-        - Returns the list of rules from the database (synced with Gmail).
-    - POST /rules
-        - Body: RuleRequest
-        - Action: Create filter in Gmail, persist to DB, returns new rule id.
-    - DELETE /rules/{rule_id}
-        - Deletes in Gmail first, then removes from DB.
-
-Example create request:
-
-```python
-# Python
-{
-  "rule_name": "Move notifications",
-  "criteria": "{\"from\":\"notify@example.com\"}",
-  "addLabelIds": ["Label_123"],
-  "removeLabelIds": ["INBOX"],
-  "forward": ""
-}
-```
-
-
-- Labels controller (/labels)
-    - GET /labels
-        - Lists labels from DB after syncing with Gmail.
-    - POST /labels
-        - Body: LabelRequest { name }
-        - Creates a Gmail label and stores it in the DB.
-    - DELETE /labels/{label_id}
-        - Deletes label in Gmail, then from DB.
-
-- Stats controller (/stats)
-    - GET /stats/total_processed?rule_id={id}
-        - Sum of EmailStatistic.processed for the rule across all time.
-    - GET /stats/daily_processed?rule_id={id}
-        - Sum for last 24 hours.
-    - GET /stats/weekly_processed?rule_id={id}
-        - Sum from start of week (Monday 00:00 UTC) to now.
-    - GET /stats/monthly_processed?rule_id={id}
-        - Sum from start of month (00:00 UTC on day 1) to now.
-    - GET /stats/unread
-        - Returns unread message count from Gmail.
-    - GET /stats/read
-        - Returns (total - unread) computed using Gmail totals.
-
-Example responses:
-
-```python
-# Python
-# GET /stats/total_processed?rule_id=42
-{"processed": 128}
-
-# GET /stats/unread
-{"unread": 17}
-
-# GET /stats/read
-{"read": 2034}
-```
-
-
+    - The Gmail client retains an in-memory history cursor for incremental sync.
 
 ## Local setup and run
 
-1) Install dependencies (Python 3.9+ recommended)
+1) **Install dependencies** (Python 3.9+ recommended)
 - Use virtualenv per your project tooling.
-- Ensure packages like fastapi, uvicorn, sqlalchemy, google-auth, google-api-python-client, keyring, pydantic are installed as required by your environment.
+- Ensure packages like fastapi, uvicorn, sqlalchemy, google-auth, google-api-python-client, keyring, pydantic are installed.
 
-2) Configure OAuth credentials
-- Place credentials.json in the working directory for InstalledAppFlow.
+2) **Configure OAuth credentials**
+- Place `credentials.json` in the working directory for InstalledAppFlow.
 - First run will prompt authorization and securely store tokens via keyring.
 
-3) Run the API server
+3) **Environment configuration:**
+   Configure `.env.{APP_ENV}` file by setting run configuration to include environment variable `APP_ENV=local` (default: `local`)
+   Set the following environment variables as needed (see `.env.local` for reference):
 
-```shell script
-# Bash
-uvicorn main:app --reload
+- `HOST_URL`: Host address for the server (default: `localhost`)
+- `PORT`: Port for the server (default: `5000`)
+- `ORIGIN`: Allowed CORS origin (default: `http://localhost:5000`)
+- `SSL_KEY_PATH`: Path to SSL key file (default: empty)
+- `SSL_CERT_PATH`: Path to SSL certificate file (default: empty)
+- `APP_RELOAD`: Enable auto-reload for development (default: `true`)
+- `DEBUG`: Enable debug mode (default: `true`)
+- `GMAIL_REDIRECT_URI`: OAuth redirect URI for Gmail (default: `http://localhost:5000/v1/oauth/callback`)
+
+
+4) **Run the API server**
+
+```
+python3 main.py
 ```
 
-
-4) Explore docs
+5) **Explore docs**
 - Open http://127.0.0.1:8000/docs for Swagger UI.
 - Open http://127.0.0.1:8000/redoc for ReDoc.
 
-5) Verify background engine
+6) **Verify background engine**
 - Look for startup logs indicating the History Engine scheduled its next run.
-- Optionally enable an initial run at startup (see the comments in HistoryEngine.start()).
-
 
 ## Background History Engine
 
-- Runs daily at 04:00 UTC.
+- Runs daily at 04:00 UTC (configurable).
 - Loads EmailRule entries and creates a mapping of labelIds to rule_ids.
 - Calls gmail_client.list_history(...) to retrieve labelAdded/labelRemoved events since the last run.
-- For each rule, counts unique messages that had matching label changes (deduplicated per rule).
+- For each rule, counts unique messages that had matching label changes.
 - Persists a record in EmailStatistic with the current timestamp and processed count.
-
-This approach yields accurate “processed” totals that your Stats API can aggregate by day/week/month.
-
 
 ## Data model (quick reference)
 
+- EmailStatistic
+    - id (PK, int)
+    - email_address (PK, str)
+    - timestamp (int)
+    - processed (int)
+    - rule_id (int, not null)
+    - rule_name (str, not null)
+
 - EmailRule
-    - id (PK)
-    - gmail_id (filter id in Gmail)
-    - name
-    - criteria (stringified JSON of Gmail criteria)
-    - addLabelIds (JSON array of label ids)
-    - removeLabelIds (JSON array of label ids)
-    - forward (email address or empty)
+    - id (PK, int)
+    - email_address (str)
+    - gmail_id (str, not null)
+    - name (str)
+    - criteria (str)
+    - addLabelIds (JSON, not null)
+    - removeLabelIds (JSON, not null)
+    - forward (str)
 
 - EmailLabel
-    - id (PK)
-    - gmail_id
-    - name
+    - id (PK, int)
+    - email_address (str)
+    - gmail_id (str, not null)
+    - name (str, not null)
+    - text_color (str)
+    - background_color (str)
 
-- EmailStatistic
-    - timestamp (epoch seconds, PK)
-    - processed (int)
-    - rule_id (FK-like reference to EmailRule.id)
-    - rule_name (denormalized for convenience)
+- AuthorizedUsers
+    - id (unique, int)
+    - email (PK, str)
+    - last_history_id (str - from Gmail profile)

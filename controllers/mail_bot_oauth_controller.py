@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 
 from service.mail_oauth_service import get_oauth_service, MailOAuthService
 
-oauth_router = APIRouter(prefix="/oauth")
+oauth_router = APIRouter(prefix="/v1/oauth")
 
 @oauth_router.get("/login")
 def login(oauth_service: MailOAuthService = Depends(get_oauth_service)):
