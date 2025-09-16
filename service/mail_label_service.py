@@ -1,4 +1,8 @@
+import logging as log
+from typing import Optional
+
 from fastapi import Depends
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend import database
@@ -24,67 +28,78 @@ class MailLabelService:
         self.db = db_session
         self.gmail_client = gmail_client
 
-    def _db_add(self, labels: list[str]):
+    def _upsert_db(self, user_email, labels: list[dict]):
         """Helper method to add labels to the local database."""
-        self.db.add_all([EmailLabel(name=lbl) for lbl in labels])
+        log.warning(f"Upserting {len(labels)} labels into DB during sync")
+        self.db.add_all(
+            [EmailLabel(
+                email_address=user_email,
+                gmail_id=lbl['id'],
+                name=lbl['name']) for lbl in labels]
+        )
         self.db.commit()
 
-    def _db_delete(self, labels: list[str]):
+    def _db_delete(self, labels: list[EmailLabel]):
         """Helper method to delete labels from the local database."""
-        existing_labels = self.db.query(EmailLabel).filter(EmailLabel.name.in_(labels)).all()
-        for label in existing_labels:
+        log.warning(f"Deleting {len(labels)} labels from DB during sync")
+        for label in labels:
             self.db.delete(label)
         self.db.commit()
 
-    def list_labels(self):
+    def list_labels(self, user_email: str, access_token: str) -> list[EmailLabel]:
         try:
             # Get from Gmail (golden source)
-            gmail_labels = self.gmail_client.list_labels()
-            gmail_label_names = {lbl['name'] for lbl in gmail_labels}
+            gmail_labels = self.gmail_client.list_labels(user_email, access_token)
+            gmail_label_map = {lbl['id']: lbl for lbl in gmail_labels}
+            log.info(f"Fetched {len(gmail_label_map)} labels from Gmail")
         except Exception as e:
             raise RuntimeError(f"Failed to fetch labels from Gmail: {e}")
 
         # Fetch all local labels
-        local_labels = self.db.query(EmailLabel).all()
-        local_label_names = {label.name for label in local_labels}
+        local_labels = self.db.execute(
+            select(EmailLabel).where(EmailLabel.email_address == user_email)
+        ).scalars().all()
+        local_label_map = {label.gmail_id: label for label in local_labels}
+        log.info(f"Fetched {len(local_label_map)} labels from DB")
 
         # Add new labels from Gmail to DB
-        new_labels = [lbl for lbl in gmail_label_names if lbl not in local_label_names]
-        self._db_add(new_labels)
+        self._upsert_db(user_email, [lbl for gid, lbl in gmail_label_map.items() if gid not in local_label_map])
 
         # Delete labels from DB that are not in Gmail
-        bad_labels = [lbl for lbl in local_label_names if lbl not in gmail_label_names]
-        self._db_delete(bad_labels)
+        self._db_delete([lbl for lbl in local_labels if lbl.gmail_id not in gmail_label_map])
 
         # Return synced labels from db
-        return self.db.query(EmailLabel).all()
+        return list(self.db.execute(select(EmailLabel).order_by(EmailLabel.name)).scalars().all())
 
-    def create_label(self, req: LabelRequest):
+    def create_label(self, user_email: str, access_token: str, req: LabelRequest):
         try:
             # Create label in Gmail (golden source)
-            gmail_label = self.gmail_client.create_label(req.name)
+            gmail_label = self.gmail_client.create_label(user_email, access_token, req.label, req.text_color, req.background_color)
         except Exception as e:
             raise RuntimeError(f"Failed to create label in Gmail: {e}")
 
         # Store in local DB
-        label = EmailLabel(name=gmail_label['name'])
+        label = EmailLabel(
+            email_address=user_email,
+            name=req.label,
+            gmail_id=gmail_label['id']
+        )
         self.db.add(label)
         self.db.commit()
         self.db.refresh(label)
-        return label.id
+        return label
 
-    def delete_label(self, label_id: int):
-        label = self.db.query(EmailLabel).filter(EmailLabel.id == label_id)
+    def delete_label(self, user_email: str, access_token: str, label_id: int):
+        label: Optional[EmailLabel] = self.db.get(EmailLabel, label_id)
         if not label:
             return False
 
         try:
             # Delete from Gmail
-            self.gmail_client.delete_label(label.gmail_id)
+            self.gmail_client.delete_label(user_email, label.gmail_id, access_token)
         except Exception as e:
             raise RuntimeError(f"Failed to delete label from Gmail: {e}")
 
         # Delete from local DB
-        self.db.delete(label)
-        self.db.commit()
+        self._db_delete([label])
         return True

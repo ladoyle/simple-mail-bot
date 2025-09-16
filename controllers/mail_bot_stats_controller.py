@@ -1,29 +1,83 @@
-# from fastapi import APIRouter, HTTPException
-# from models.mail_bot_schemas import LabelRequest, RuleRequest
-# from service.mail_rule_service import MailService
-#
-# stats_router = APIRouter(prefix="/stats")
-#
-# @stats_router.get("/total_processed")
-# def get_total_processed():
-#     return {"processed": mail_service.get_total_processed()}
-#
-# @stats_router.get("/daily_processed")
-# def get_daily_processed():
-#     return {"processed": mail_service.get_daily_processed()}
-#
-# @stats_router.get("/weekly_processed")
-# def get_weekly_processed():
-#     return {"processed": mail_service.get_weekly_processed()}
-#
-# @stats_router.get("/monthly_processed")
-# def get_monthly_processed():
-#     return {"processed": mail_service.get_monthly_processed()}
-#
-# @stats_router.get("/unread")
-# def get_unread():
-#     return {"unread": mail_service.get_unread_count()}
-#
-# @stats_router.get("/read")
-# def get_read():
-#     return {"read": mail_service.get_read_count()}
+import logging as log
+from fastapi import APIRouter, Header
+from fastapi.params import Depends
+
+from service.mail_stats_service import MailStatsService, get_stats_service
+
+stats_router = APIRouter(prefix="/stats")
+
+@stats_router.get("/total-processed")
+def get_total_processed(
+        ruleId: int,
+        access_token: str = Header(..., alias="Authorization"),
+        user_email: str = Header(..., alias="user-email"),
+        mail_stats_service: MailStatsService = Depends(get_stats_service)
+):
+    log.info(f"Getting total processed for rule={ruleId}")
+    return {
+        "message": f"Total processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_total_processed(user_email, access_token, ruleId)
+        }
+
+@stats_router.get("/daily-processed")
+def get_daily_processed(
+        ruleId: int,
+        access_token: str = Header(..., alias="Authorization"),
+        user_email: str = Header(..., alias="user-email"),
+        mail_stats_service: MailStatsService = Depends(get_stats_service)
+):
+    log.info(f"Getting daily processed for rule={ruleId}")
+    return {
+        "message": f"Daily processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_daily_processed(user_email, access_token, ruleId)
+        }
+
+@stats_router.get("/weekly-processed")
+def get_weekly_processed(
+        ruleId: int,
+        access_token: str = Header(..., alias="Authorization"),
+        user_email: str = Header(..., alias="user-email"),
+        mail_stats_service: MailStatsService = Depends(get_stats_service)
+):
+    log.info(f"Getting weekly processed for rule={ruleId}")
+    return {
+        "message": f"Weekly processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_weekly_processed(user_email, access_token, ruleId)
+        }
+
+@stats_router.get("/monthly-processed")
+def get_monthly_processed(
+        ruleId: int,
+        access_token: str = Header(..., alias="Authorization"),
+        user_email: str = Header(..., alias="user-email"),
+        mail_stats_service: MailStatsService = Depends(get_stats_service)
+):
+    log.info(f"Getting monthly processed for rule={ruleId}")
+    return {
+        "message": f"Monthly processed emails for rule {ruleId}",
+        "numEmails": mail_stats_service.get_monthly_processed(user_email, access_token, ruleId)
+        }
+
+@stats_router.get("/unread")
+def get_unread(
+        access_token: str = Header(..., alias="Authorization"),
+        user_email: str = Header(..., alias="user-email"),
+        mail_stats_service: MailStatsService = Depends(get_stats_service)
+):
+    log.info(f"Getting unread count from gmail")
+    return {
+        "message": f"Unread message count for {user_email}",
+        "numEmails": mail_stats_service.get_unread_count(user_email, access_token)
+    }
+
+@stats_router.get("/read")
+def get_read(
+        access_token: str = Header(..., alias="Authorization"),
+        user_email: str = Header(..., alias="user-email"),
+        mail_stats_service: MailStatsService = Depends(get_stats_service)
+):
+    log.info(f"Getting read count from gmail")
+    return {
+        "message": f"Read message count for {user_email}",
+        "numEmails": mail_stats_service.get_read_count(user_email, access_token)
+    }
